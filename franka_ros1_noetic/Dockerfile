@@ -30,9 +30,10 @@ RUN dpkg -i libfranka-0.8.0-amd64.deb
 
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
     cd /root/catkin_ws && \
-    catkin_make && \
-    source /root/catkin_ws/devel/setup.bash"
+    catkin_make"
 
 ENV DISABLE_ROS1_EOL_WARNINGS=1
 
-CMD bash -c "ulimit -r 99 && ulimit -l unlimited && bash"
+CMD bash -c "ulimit -r 99 && ulimit -l unlimited && \
+             source /root/catkin_ws/devel/setup.bash && \                
+             ./roslaunch.sh"
