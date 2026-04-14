@@ -1,0 +1,1 @@
+docker build -t fran/ros-noetic . --network=host

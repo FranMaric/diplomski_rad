@@ -1,0 +1,38 @@
+FROM osrf/ros:noetic-desktop-full-focal
+
+RUN apt update && apt install -y \
+    ros-noetic-ros-control \
+    ros-noetic-ros-controllers \
+    ros-noetic-controller-manager \
+    ros-noetic-hardware-interface \
+    ros-noetic-transmission-interface \
+    ros-noetic-combined-robot-hw \
+    git \
+    iputils-ping
+
+RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+RUN echo "source /root/catkin_ws/devel/setup.bash" >> ~/.bashrc
+
+RUN mkdir -p /root/catkin_ws/src
+
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+    cd /root/catkin_ws && \
+    catkin_make"
+
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+    cd /root/catkin_ws/build && \
+    cmake ../src -DCMAKE_INSTALL_PREFIX=../install -DCATKIN_DEVEL_PREFIX=../devel"
+
+RUN cd /root/catkin_ws/src && git clone https://github.com/frankarobotics/franka_ros -b 0.8.0
+
+COPY . .
+RUN dpkg -i libfranka-0.8.0-amd64.deb
+
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+    cd /root/catkin_ws && \
+    catkin_make && \
+    source /root/catkin_ws/devel/setup.bash"
+
+ENV DISABLE_ROS1_EOL_WARNINGS=1
+
+CMD bash -c "ulimit -r 99 && ulimit -l unlimited && bash"
