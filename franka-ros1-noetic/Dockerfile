@@ -1,5 +1,7 @@
 FROM osrf/ros:noetic-desktop-full-focal
 
+ENV DISABLE_ROS1_EOL_WARNINGS=1
+
 RUN apt update && apt install -y \
     ros-noetic-ros-control \
     ros-noetic-ros-controllers \
@@ -32,10 +34,14 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
     cd /root/catkin_ws && \
     catkin_make"
 
-ENV DISABLE_ROS1_EOL_WARNINGS=1
-
-COPY ./roslaunch.sh .
+RUN cd /root/catkin_ws/src && catkin_create_pkg my_custom_launcher
+COPY ./my_launch_file.launch /root/catkin_ws/src/my_custom_launcher/
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+    cd /root/catkin_ws && \
+    catkin_make --pkg my_custom_launcher"
 
 CMD bash -c "ulimit -r 99 && ulimit -l unlimited && \
              source /root/catkin_ws/devel/setup.bash && \                
-             ./roslaunch.sh"
+             roslaunch my_custom_launcher \
+             my_launch_file.launch \
+             robot_ip:=172.16.0.2"
