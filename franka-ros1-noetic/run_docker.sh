@@ -1,5 +1,7 @@
 xhost +local:docker
 docker run -it \
+  --rm \
+  --name fran-ros-noetic \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   --privileged \

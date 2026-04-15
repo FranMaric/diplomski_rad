@@ -45,3 +45,6 @@ CMD bash -c "ulimit -r 99 && ulimit -l unlimited && \
              roslaunch my_custom_launcher \
              my_launch_file.launch \
              robot_ip:=172.16.0.2"
+
+# roslaunch franka_example_controllers \
+# cartesian_impedance_example_controller.launch \
