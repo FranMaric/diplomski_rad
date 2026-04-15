@@ -1,3 +1,14 @@
+### Build
+`cd franka-ros1-noetic`
+`chmod +x build_docker.sh`
+`./build_docker.sh`
+
+### Run after succesful build
+`cd franka-ros1-noetic`
+`chmod +x run_docker.sh`
+`./run_docker.sh`
+then the franka controller is expecting commands on `/cartesian_impedance_example_controller/equilibrium_pose` 
+
 ### Primjeri tocaka
 header: 
   frame_id: "panda_link0"
