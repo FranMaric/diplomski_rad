@@ -40,6 +40,8 @@ pose:
 
 ## ROS1 noetic usage
 
+### setting pose
+
 rostopic pub -r 60 /cartesian_impedance_example_controller/equilibrium_pose geometry_msgs/PoseStamped "
 header: 
   frame_id: "panda_link0"
@@ -87,6 +89,8 @@ goal:
   force: 5.0"
 
 ## ROS2 jazzy usage
+
+### setting pose
 
 ros2 topic pub -r 60 /cartesian_impedance_example_controller/equilibrium_pose geometry_msgs/PoseStamped "
 header: 
