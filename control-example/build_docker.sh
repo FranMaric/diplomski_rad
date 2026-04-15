@@ -1,0 +1,1 @@
+docker build -t control-example . --network=host
