@@ -2,6 +2,7 @@
 
 import rospy
 from geometry_msgs.msg import Pose, PoseStamped
+from sensor_msgs.msg import JointState
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
 
 
@@ -14,6 +15,7 @@ class RobotControl:
 		pose_topic="/cartesian_impedance_example_controller/equilibrium_pose",
 		gripper_move_topic="/franka_gripper/move/goal",
 		gripper_grasp_topic="/franka_gripper/grasp/goal",
+		joint_states_topic="/joint_states",
 		pose_publish_rate_hz=60.0,
 	):
 		if not rospy.core.is_initialized():
@@ -26,8 +28,36 @@ class RobotControl:
 		self._gripper_move_pub = rospy.Publisher(gripper_move_topic, MoveActionGoal, queue_size=10)
 		self._gripper_grasp_pub = rospy.Publisher(gripper_grasp_topic, GraspActionGoal, queue_size=10)
 
+		# Store latest raw /joint_states values.
+		self._joint_names = []
+		self._joint_positions = []
+		self._joint_velocities = []
+		self._joint_efforts = []
+
+		self._joint_states_sub = rospy.Subscriber(
+			joint_states_topic,
+			JointState,
+			self._joint_states_cb,
+			queue_size=10,
+		)
+
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
+
+	def _joint_states_cb(self, msg):
+		self._joint_names = list(msg.name)
+		self._joint_positions = list(msg.position)
+		self._joint_velocities = list(msg.velocity)
+		self._joint_efforts = list(msg.effort)
+
+	def get_joint_values(self):
+		"""
+		Get the latest joint positions as a dictionary.
+
+		Returns:
+			dict: {joint_name: joint_value}
+		"""
+		return dict(zip(self._joint_names, self._joint_positions))
 
 	def move_to(self, pose):
 		"""
@@ -89,39 +119,42 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 
 
 def main():
-    controller = RobotControl()
+	controller = RobotControl()
+	controller.get_joint_values()
+	
+	print("Current joint values:", controller.get_joint_values())
+	
+	grip_pose = _build_pose(
+		0.44941010301570267,
+		-0.4740930479616219,
+		0.015079897364934036,
+		0.9338922374767828,
+		-0.35438191842380573,
+		-0.022341097189847583,
+		0.041947825345603644,
+	)
+	in_air_pose = _build_pose(
+		0.5859527673747369,
+		-0.6055794976683551,
+		0.5813498998428407,
+		0.6946832369780841,
+		-0.33802445299361306,
+		0.6173720999500003,
+		0.14834540654616335,
+	)
 
-    grip_pose = _build_pose(
-        0.44941010301570267,
-        -0.4740930479616219,
-        0.015079897364934036,
-        0.9338922374767828,
-        -0.35438191842380573,
-        -0.022341097189847583,
-        0.041947825345603644,
-    )
-    in_air_pose = _build_pose(
-        0.5859527673747369,
-        -0.6055794976683551,
-        0.5813498998428407,
-        0.6946832369780841,
-        -0.33802445299361306,
-        0.6173720999500003,
-        0.14834540654616335,
-    )
+	rospy.loginfo("RobotControl node started.")
 
-    rospy.loginfo("RobotControl node started.")
+	# controller.gripper_open()
+	# controller.move_to(grip_pose)
+	# rospy.sleep(3)
+	# controller.gripper_close()
+	# rospy.sleep(2)
+	# controller.move_to(in_air_pose)
+	# rospy.sleep(4)
+	# controller.gripper_open()
 
-    # controller.gripper_open()
-    # controller.move_to(grip_pose)
-    # rospy.sleep(3)
-    # controller.gripper_close()
-    # rospy.sleep(2)
-    # controller.move_to(in_air_pose)
-    # rospy.sleep(4)
-    # controller.gripper_open()
-
-    rospy.loginfo("RobotControl node finished.")
+	rospy.loginfo("RobotControl node finished.")
 
 if __name__ == "__main__":
 	main()
