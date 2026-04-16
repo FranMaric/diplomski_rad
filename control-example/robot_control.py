@@ -46,18 +46,6 @@ class RobotControl:
 
 		self._pose_pub.publish(msg)
 
-	def move_to_rate(self, pose, duration_sec):
-		"""Continuously publish a pose for duration_sec at pose_publish_rate_hz."""
-		if duration_sec <= 0:
-			raise ValueError("duration_sec must be > 0")
-
-		rate = rospy.Rate(self.pose_publish_rate_hz)
-		end_time = rospy.Time.now() + rospy.Duration.from_sec(duration_sec)
-
-		while not rospy.is_shutdown() and rospy.Time.now() < end_time:
-			self.move_to(pose)
-			rate.sleep()
-
 	def gripper_open(self, width=0.07, speed=0.2):
 		"""
 		Open/spread gripper to target width.
