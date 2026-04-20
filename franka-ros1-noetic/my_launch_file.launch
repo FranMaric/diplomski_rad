@@ -4,11 +4,33 @@
   <arg name="robot" default="panda" doc="choose your robot. Possible values: [panda, fr3]"/>
   <arg name="arm_id" default="$(arg robot)" />
 
-  <include file="$(find franka_control)/launch/franka_control.launch" pass_all_args="true"/>
+  <!-- simulation toggle -->
+  <arg name="sim" default="false"/>
 
+  <!-- Gazebo ONLY if sim=true -->
+  <include file="$(find franka_gazebo)/launch/panda.launch"
+           if="$(arg sim)">
+    <arg name="x" value="-0.5"/>
+    <arg name="world" value="$(find franka_gazebo)/world/stone.sdf"/>
+    <arg name="rviz" value="true"/>
+  </include>
+
+  <!-- Runs ONLY if sim=false -->
+  <include file="$(find franka_control)/launch/franka_control.launch" 
+            pass_all_args="true"
+            unless="$(arg sim)"/>
+
+  <!-- REAL ROBOT controllers -->
   <rosparam command="load"
-            file="$(find franka_example_controllers)/config/franka_example_controllers.yaml"
-            subst_value="true" />
+      file="$(find franka_example_controllers)/config/franka_example_controllers.yaml"
+      subst_value="true"
+      unless="$(arg sim)"/>
+
+  <!-- SIMULATION controllers -->
+  <rosparam command="load"
+      file="$(find franka_gazebo)/config/sim_controllers.yaml"
+      subst_value="true"
+      if="$(arg sim)"/>
 
   <node name="controller_spawner"
         pkg="controller_manager"
@@ -21,13 +43,9 @@
         type="rviz"
         output="screen"
         name="rviz"
+        unless="$(arg sim)"
         args="-d $(find franka_example_controllers)/launch/rviz/franka_description_with_marker.rviz
               -f $(arg arm_id)_link0
               --splash-screen $(find franka_visualization)/splash.png"/>
-
-  <node name="rqt_reconfigure"
-        pkg="rqt_reconfigure"
-        type="rqt_reconfigure"
-        required="false" />
 
 </launch>

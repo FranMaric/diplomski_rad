@@ -9,6 +9,7 @@ RUN apt update && apt install -y \
     ros-noetic-hardware-interface \
     ros-noetic-transmission-interface \
     ros-noetic-combined-robot-hw \
+    ros-noetic-boost-sml \
     git \
     iputils-ping
 
@@ -25,7 +26,7 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
     cd /root/catkin_ws/build && \
     cmake ../src -DCMAKE_INSTALL_PREFIX=../install -DCATKIN_DEVEL_PREFIX=../devel"
 
-RUN cd /root/catkin_ws/src && git clone https://github.com/frankarobotics/franka_ros -b 0.8.0
+RUN cd /root/catkin_ws/src && git clone https://github.com/frankarobotics/franka_ros -b noetic-devel
 
 COPY ./libfranka-0.8.0-amd64.deb .
 RUN dpkg -i libfranka-0.8.0-amd64.deb
@@ -44,7 +45,5 @@ CMD bash -c "ulimit -r 99 && ulimit -l unlimited && \
              source /root/catkin_ws/devel/setup.bash && \                
              roslaunch my_custom_launcher \
              my_launch_file.launch \
-             robot_ip:=172.16.0.2"
-
-# roslaunch franka_example_controllers \
-# cartesian_impedance_example_controller.launch \
+             robot_ip:=172.16.0.2 \
+             sim:=false"
