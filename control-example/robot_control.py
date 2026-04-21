@@ -9,6 +9,7 @@ from sensor_msgs.msg import Image
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from cv_bridge import CvBridge
 import cv2
+import numpy as np
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
 from openpi_client import image_tools
 from openpi_client import websocket_client_policy
@@ -67,6 +68,9 @@ class RobotControl:
 			queue_size=10,
 		)
 
+		self.ARM_JOINTS = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+
+
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
 
@@ -92,7 +96,8 @@ class RobotControl:
 		Returns:
 			list: [joint_value]
 		"""
-		return list(self._joint_positions)[:7]  # Only return the 7 arm joints, not the gripper joints.
+		d = self.get_joint_values_dict()
+		return [d[j] for j in self.ARM_JOINTS]
 
 	def move_to(self, pose):
 		"""
@@ -157,8 +162,7 @@ class RobotControl:
 		traj.header = Header()
 		traj.header.stamp = rospy.Time.now()
 		traj.header.frame_id = self.frame_id
-		traj.joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3',
-							'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+		traj.joint_names = self.ARM_JOINTS
 		
 		point = JointTrajectoryPoint()
 		point.positions = (self.get_arm_joint_values() + action[:7]).tolist()  # delta + current
@@ -166,11 +170,18 @@ class RobotControl:
 
 		traj.points = [point]
 		self._joint_trajectory_pub.publish(traj)
+
+		gripper_action = action[7]
+		gripper_width = float(np.clip(gripper_action, 0.0, 1.0)) * 0.08
+		self.gripper_open(width=gripper_width)
 	
 	def execute_action_chunk(self, action_chunk):
+		rate = rospy.Rate(50)
 		for action in action_chunk:
+			rospy.loginfo(f"Action: {action[:7].round(3)}, Gripper: {action[7]:.3f}")
+			rospy.loginfo(f"Current joints: {[round(j,3) for j in self.get_arm_joint_values()]}")
 			self.execute_action(action)
-			rospy.sleep(0.05)  # Sleep for 50ms between actions to achieve 20Hz execution
+			rate.sleep()
 
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
@@ -207,9 +218,9 @@ def main():
 			"observation/wrist_image_left": image_tools.convert_to_uint8(
 				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
 			),
-			"observation/joint_position": robot_controller.get_arm_joint_values() + [0],
-			"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02,
-			"prompt": "Pick up the white block located on the blue plate.",
+			"observation/joint_position": robot_controller.get_arm_joint_values(),
+			"observation/gripper_position": np.array([robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02]),
+			"prompt": "Move the end effector to the blue plate.",
 		}
 
 		action_chunk = policy_client.infer(observation)["actions"]
