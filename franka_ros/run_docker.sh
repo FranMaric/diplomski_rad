@@ -11,4 +11,7 @@ docker run -it \
   --ulimit rtprio=99 \
   --ulimit memlock=-1 \
   -v /dev/shm:/dev/shm \
+  -v .:/root/catkin_ws/src/franka_ros \
+  -v franka_build_cache:/root/catkin_ws/build \
+  -v franka_devel_cache:/root/catkin_ws/devel \
   fran/ros-noetic:latest
