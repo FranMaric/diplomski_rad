@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+from email.header import Header
+
 import rospy
 from geometry_msgs.msg import Pose, PoseStamped
 from sensor_msgs.msg import JointState
 from sensor_msgs.msg import Image
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from cv_bridge import CvBridge
 import cv2
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
@@ -31,6 +34,7 @@ class RobotControl:
 		self.pose_publish_rate_hz = float(pose_publish_rate_hz)
 
 		self._pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=10)
+		self._joint_trajectory_pub = rospy.Publisher('/position_joint_trajectory_controller/command', JointTrajectory, queue_size=1)
 		self._gripper_move_pub = rospy.Publisher(gripper_move_topic, MoveActionGoal, queue_size=10)
 		self._gripper_grasp_pub = rospy.Publisher(gripper_grasp_topic, GraspActionGoal, queue_size=10)
 
@@ -81,14 +85,14 @@ class RobotControl:
 		"""
 		return dict(zip(self._joint_names, self._joint_positions))
 	
-	def get_joint_values_list(self):
+	def get_arm_joint_values(self):
 		"""
 		Get the latest joint positions as a list.
 
 		Returns:
 			list: [joint_value]
 		"""
-		return list(self._joint_positions)
+		return list(self._joint_positions)[:7]  # Only return the 7 arm joints, not the gripper joints.
 
 	def move_to(self, pose):
 		"""
@@ -147,6 +151,26 @@ class RobotControl:
 
 	def get_latest_scene_image(self):
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
+	
+	def execute_action(self, action):
+		traj = JointTrajectory()
+		traj.header = Header()
+		traj.header.stamp = rospy.Time.now()
+		traj.header.frame_id = self.frame_id
+		traj.joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3',
+							'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+		
+		point = JointTrajectoryPoint()
+		point.positions = (self.get_arm_joint_values() + action[:7]).tolist()  # delta + current
+		point.time_from_start = rospy.Duration(0.05)  # 20Hz = 50ms per step
+
+		traj.points = [point]
+		self._joint_trajectory_pub.publish(traj)
+	
+	def execute_action_chunk(self, action_chunk):
+		for action in action_chunk:
+			self.execute_action(action)
+			rospy.sleep(0.05)  # Sleep for 50ms between actions to achieve 20Hz execution
 
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
@@ -172,21 +196,30 @@ def main():
 
 	rospy.loginfo("RobotControl node connected to policy server.")
 
-	observation = {
-		"observation/exterior_image_1_left": image_tools.convert_to_uint8(
-			image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
-		),
-		"observation/wrist_image_left": image_tools.convert_to_uint8(
-			image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
-		),
-		"observation/joint_position": robot_controller.get_joint_values_list(),
-		"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02,
-		"prompt": "Pick up the white block located on the blue plate.",
-	}
+	iteration = 0
+	while True:
+		# rospy.loginfo(f"Current joint values: {robot_controller.get_joint_values_dict()}")
 
-	action_chunk = policy_client.infer(observation)["actions"]
+		observation = {
+			"observation/exterior_image_1_left": image_tools.convert_to_uint8(
+				image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
+			),
+			"observation/wrist_image_left": image_tools.convert_to_uint8(
+				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
+			),
+			"observation/joint_position": robot_controller.get_arm_joint_values() + [0],
+			"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02,
+			"prompt": "Pick up the white block located on the blue plate.",
+		}
 
-	print(action_chunk)
+		action_chunk = policy_client.infer(observation)["actions"]
+
+		robot_controller.execute_action_chunk(action_chunk)
+
+		print(iteration)
+		iteration += 1
+
+		# print(action_chunk)
 
 	rospy.loginfo("RobotControl node finished.")
 
