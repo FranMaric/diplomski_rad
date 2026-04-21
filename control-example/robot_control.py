@@ -3,8 +3,12 @@
 import rospy
 from geometry_msgs.msg import Pose, PoseStamped
 from sensor_msgs.msg import JointState
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
-
+from openpi_client import image_tools
+from openpi_client import websocket_client_policy
 
 class RobotControl:
 	"""ROS1 (Noetic) helper for controlling Franka pose and gripper."""
@@ -16,6 +20,8 @@ class RobotControl:
 		gripper_move_topic="/franka_gripper/move/goal",
 		gripper_grasp_topic="/franka_gripper/grasp/goal",
 		joint_states_topic="/joint_states",
+		ee_image_topic="/ee_camera/image_raw",
+		scene_image_topic="/scene_camera/image_raw",
 		pose_publish_rate_hz=60.0,
 	):
 		if not rospy.core.is_initialized():
@@ -41,6 +47,22 @@ class RobotControl:
 			queue_size=10,
 		)
 
+		self._cv_bridge = CvBridge()
+
+		self._ee_image_sub = rospy.Subscriber(
+			ee_image_topic,
+			Image,
+			self._ee_image_cb,
+			queue_size=10,
+		)
+
+		self._scene_image_sub = rospy.Subscriber(
+			scene_image_topic,
+			Image,
+			self._scene_image_cb,
+			queue_size=10,
+		)
+
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
 
@@ -50,7 +72,7 @@ class RobotControl:
 		self._joint_velocities = list(msg.velocity)
 		self._joint_efforts = list(msg.effort)
 
-	def get_joint_values(self):
+	def get_joint_values_dict(self):
 		"""
 		Get the latest joint positions as a dictionary.
 
@@ -58,6 +80,15 @@ class RobotControl:
 			dict: {joint_name: joint_value}
 		"""
 		return dict(zip(self._joint_names, self._joint_positions))
+	
+	def get_joint_values_list(self):
+		"""
+		Get the latest joint positions as a list.
+
+		Returns:
+			list: [joint_value]
+		"""
+		return list(self._joint_positions)
 
 	def move_to(self, pose):
 		"""
@@ -104,6 +135,18 @@ class RobotControl:
 		msg.goal.force = float(force)
 
 		self._gripper_grasp_pub.publish(msg)
+	
+	def _ee_image_cb(self, msg):
+		self._latest_ee_image = msg
+
+	def _scene_image_cb(self, msg):
+		self._latest_scene_image = msg
+
+	def get_latest_ee_image(self):
+		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="bgr8")
+
+	def get_latest_scene_image(self):
+		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
 
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
@@ -119,40 +162,31 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 
 
 def main():
-	controller = RobotControl()
-	controller.get_joint_values()
-	
-	print("Current joint values:", controller.get_joint_values())
-	
-	grip_pose = _build_pose(
-		0.44941010301570267,
-		-0.4740930479616219,
-		0.015079897364934036,
-		0.9338922374767828,
-		-0.35438191842380573,
-		-0.022341097189847583,
-		0.041947825345603644,
-	)
-	in_air_pose = _build_pose(
-		0.5859527673747369,
-		-0.6055794976683551,
-		0.5813498998428407,
-		0.6946832369780841,
-		-0.33802445299361306,
-		0.6173720999500003,
-		0.14834540654616335,
-	)
+	rospy.loginfo("RobotControl node init.")
 
-	rospy.loginfo("RobotControl node started.")
+	robot_controller = RobotControl()
 
-	# controller.gripper_open()
-	# controller.move_to(grip_pose)
-	# rospy.sleep(3)
-	# controller.gripper_close()
-	# rospy.sleep(2)
-	# controller.move_to(in_air_pose)
-	# rospy.sleep(4)
-	# controller.gripper_open()
+	rospy.loginfo("RobotControl node connecting to policy server.")
+	
+	policy_client = websocket_client_policy.WebsocketClientPolicy(host="161.53.68.175", port=8000)
+
+	rospy.loginfo("RobotControl node connected to policy server.")
+
+	observation = {
+		"observation/exterior_image_1_left": image_tools.convert_to_uint8(
+			image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
+		),
+		"observation/wrist_image_left": image_tools.convert_to_uint8(
+			image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
+		),
+		"observation/joint_position": robot_controller.get_joint_values_list(),
+		"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02,
+		"prompt": "Pick up the white block located on the blue plate.",
+	}
+
+	action_chunk = policy_client.infer(observation)["actions"]
+
+	print(action_chunk)
 
 	rospy.loginfo("RobotControl node finished.")
 

@@ -23,7 +23,7 @@ observation = {
     ),
     "observation/joint_position": [-1.059033810400126, 0.9073768402902865, 0.2589026809603644, -0.8333167082836516, -0.0538165064950784, 3.1349696121613184, 1.9074394658406573],
     "observation/gripper_position": 0.0,
-    "prompt": "Pick up the red pepper.",
+    "prompt": "Pick up the white block located on the blue plate.",
 }
 
 # Call the policy server with the current observation.
