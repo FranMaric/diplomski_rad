@@ -162,32 +162,35 @@ class RobotControl:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
 	
-	def execute_action(self, action):
+	def execute_action_chunk(self, action_chunk):
+		ACTION_RATE = 50.0  # Hz
+
+		current_joints = np.array(self.get_arm_joint_values())
+		chunk_start = rospy.Time.now()
+
 		traj = JointTrajectory()
 		traj.header = Header()
-		traj.header.stamp = rospy.Time.now()
+		traj.header.stamp = chunk_start
 		traj.header.frame_id = self.frame_id
 		traj.joint_names = self.ARM_JOINTS
-		
-		point = JointTrajectoryPoint()
-		point.positions = (self.get_arm_joint_values() + action[:7]).tolist()  # delta + current
-		point.time_from_start = rospy.Duration(0.05)  # 20Hz = 50ms per step
 
-		traj.points = [point]
+		accumulated = current_joints.copy()
+		for i, action in enumerate(action_chunk):
+			accumulated = accumulated + action[:7]
+			point = JointTrajectoryPoint()
+			point.positions = accumulated.tolist()
+			point.time_from_start = rospy.Duration((i + 1) / ACTION_RATE)
+			traj.points.append(point)
+
 		self._joint_trajectory_pub.publish(traj)
 
-		gripper_action = action[7]
-		gripper_width = float(np.clip(gripper_action, 0.0, 1.0)) * 0.08
-		if self._last_gripper_width is None or abs(gripper_width - self._last_gripper_width) > 0.003:
-			self.gripper_open(width=gripper_width)
-			self._last_gripper_width = gripper_width
-	
-	def execute_action_chunk(self, action_chunk):
-		rate = rospy.Rate(50)
+		rate = rospy.Rate(ACTION_RATE)
 		for action in action_chunk:
-			rospy.loginfo(f"Action: {action[:7].round(3)}, Gripper: {action[7]:.3f}")
-			rospy.loginfo(f"Current joints: {[round(j,3) for j in self.get_arm_joint_values()]}")
-			self.execute_action(action)
+			gripper_width = float(np.clip(action[7], 0.0, 1.0)) * 0.08
+			if self._last_gripper_width is None or abs(gripper_width - self._last_gripper_width) > 0.003:
+				self.gripper_open(width=gripper_width)
+				self._last_gripper_width = gripper_width
+				break
 			rate.sleep()
 
 
@@ -227,14 +230,14 @@ def main():
 			),
 			"observation/joint_position": robot_controller.get_arm_joint_values(),
 			"observation/gripper_position": np.array([robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02]),
-			"prompt": "Move the end effector to the blue plate.",
+			"prompt": "Move the end effector to be above the blue plate.",
 		}
 
 		action_chunk = policy_client.infer(observation)["actions"]
 
 		robot_controller.execute_action_chunk(action_chunk)
 
-		print(iteration)
+		print(action_chunk)
 		iteration += 1
 
 		# print(action_chunk)
