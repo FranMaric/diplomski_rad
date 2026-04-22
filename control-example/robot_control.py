@@ -69,6 +69,7 @@ class RobotControl:
 		)
 
 		self.ARM_JOINTS = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+		self._last_gripper_width = None
 
 
 		# Give publishers a short moment to register with ROS master/subscribers.
@@ -152,9 +153,13 @@ class RobotControl:
 		self._latest_scene_image = msg
 
 	def get_latest_ee_image(self):
+		if self._latest_ee_image is None:
+			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="bgr8")
 
 	def get_latest_scene_image(self):
+		if self._latest_scene_image is None:
+			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
 	
 	def execute_action(self, action):
@@ -173,7 +178,9 @@ class RobotControl:
 
 		gripper_action = action[7]
 		gripper_width = float(np.clip(gripper_action, 0.0, 1.0)) * 0.08
-		self.gripper_open(width=gripper_width)
+		if self._last_gripper_width is None or abs(gripper_width - self._last_gripper_width) > 0.003:
+			self.gripper_open(width=gripper_width)
+			self._last_gripper_width = gripper_width
 	
 	def execute_action_chunk(self, action_chunk):
 		rate = rospy.Rate(50)
@@ -213,10 +220,10 @@ def main():
 
 		observation = {
 			"observation/exterior_image_1_left": image_tools.convert_to_uint8(
-				image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
+				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
 			),
 			"observation/wrist_image_left": image_tools.convert_to_uint8(
-				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
+				image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
 			),
 			"observation/joint_position": robot_controller.get_arm_joint_values(),
 			"observation/gripper_position": np.array([robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02]),
