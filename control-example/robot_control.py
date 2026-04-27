@@ -3,6 +3,7 @@
 from email.header import Header
 
 import rospy
+import tf
 from geometry_msgs.msg import Pose, PoseStamped
 from sensor_msgs.msg import JointState
 from sensor_msgs.msg import Image
@@ -71,6 +72,7 @@ class RobotControl:
 		self.ARM_JOINTS = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
 		self._last_gripper_width = None
 
+		self._tf_listener = tf.TransformListener()
 
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
@@ -99,6 +101,22 @@ class RobotControl:
 		"""
 		d = self.get_joint_values_dict()
 		return [d[j] for j in self.ARM_JOINTS]
+
+	def get_ee_pose(self, ee_frame="panda_EE"):
+		"""Returns the current EE pose in self.frame_id, or None on TF failure."""
+		try:
+			self._tf_listener.waitForTransform(
+				self.frame_id, ee_frame, rospy.Time(0), rospy.Duration(1.0)
+			)
+			translation, rot = self._tf_listener.lookupTransform(
+				self.frame_id, ee_frame, rospy.Time(0)
+			)
+		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+			rospy.logwarn(f"TF lookup failed: {e}")
+			return None
+
+		rpy = tf.transformations.euler_from_quaternion(rot)
+		return (translation, rpy)
 
 	def move_to(self, pose):
 		"""
@@ -163,34 +181,34 @@ class RobotControl:
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
 	
 	def execute_action_chunk(self, action_chunk):
-		ACTION_RATE = 50.0  # Hz
-
-		current_joints = np.array(self.get_arm_joint_values())
-		chunk_start = rospy.Time.now()
-
-		traj = JointTrajectory()
-		traj.header = Header()
-		traj.header.stamp = chunk_start
-		traj.header.frame_id = self.frame_id
-		traj.joint_names = self.ARM_JOINTS
-
-		accumulated = current_joints.copy()
-		for i, action in enumerate(action_chunk):
-			accumulated = accumulated + action[:7]
-			point = JointTrajectoryPoint()
-			point.positions = accumulated.tolist()
-			point.time_from_start = rospy.Duration((i + 1) / ACTION_RATE)
-			traj.points.append(point)
-
-		self._joint_trajectory_pub.publish(traj)
+		ACTION_RATE = 20.0  # Hz
+		COMPLETE_ACTIONS = len(action_chunk)
 
 		rate = rospy.Rate(ACTION_RATE)
-		for action in action_chunk:
-			gripper_width = float(np.clip(action[7], 0.0, 1.0)) * 0.08
-			if self._last_gripper_width is None or abs(gripper_width - self._last_gripper_width) > 0.003:
-				self.gripper_open(width=gripper_width)
-				self._last_gripper_width = gripper_width
-				break
+
+		for i in range(COMPLETE_ACTIONS):
+			action = action_chunk[i]
+			ee_translation, ee_rpy = self.get_ee_pose()
+			if ee_translation is None or ee_rpy is None:
+				rospy.logwarn("Skipping action execution due to missing TF data.")
+				continue
+
+			# Apply deltas from action to current EE pose.
+			ee_translation += tuple(action[0:3])  # delta x,y,z
+			ee_rpy += tuple(action[3:6])          # delta roll,pitch,yaw
+
+			# Convert to Pose message and publish.
+			pose = Pose()
+			pose.position.x = ee_translation[0]
+			pose.position.y = ee_translation[1]
+			pose.position.z = ee_translation[2]
+			q = tf.transformations.quaternion_from_euler(ee_rpy[0], ee_rpy[1], ee_rpy[2])
+			pose.orientation.x = q[0]
+			pose.orientation.y = q[1]
+			pose.orientation.z = q[2]
+			pose.orientation.w = q[3]
+			self.move_to(pose)
+
 			rate.sleep()
 
 
@@ -211,36 +229,48 @@ def main():
 
 	robot_controller = RobotControl()
 
+	# ee_pose = _build_pose(0.41085583533713035, -0.20026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
+
+	# robot_controller.move_to(ee_pose)
+	# return
+
 	rospy.loginfo("RobotControl node connecting to policy server.")
 	
 	policy_client = websocket_client_policy.WebsocketClientPolicy(host="161.53.68.175", port=8000)
 
 	rospy.loginfo("RobotControl node connected to policy server.")
+	rospy.loginfo(f"Current EE pose: {robot_controller.get_ee_pose()}")
 
 	iteration = 0
 	while True:
-		# rospy.loginfo(f"Current joint values: {robot_controller.get_joint_values_dict()}")
+		ee_pos, ee_rot = robot_controller.get_ee_pose()
+		
+		rospy.loginfo(f"Current EE pose & rot: {ee_pos} & {ee_rot}")
+		
+		state = np.concatenate([
+			ee_pos,           # idx 0,1,2  (m)
+			ee_rot,           # idx 3,4,5  (rad)
+			[1, -1],        # idx 6,7    (mirrored, see norm_stats)
+		]).astype(np.float32)
 
 		observation = {
-			"observation/exterior_image_1_left": image_tools.convert_to_uint8(
+			"observation/image": image_tools.convert_to_uint8(
 				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
 			),
-			"observation/wrist_image_left": image_tools.convert_to_uint8(
+			"observation/wrist_image": image_tools.convert_to_uint8(
 				image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
 			),
-			"observation/joint_position": robot_controller.get_arm_joint_values(),
-			"observation/gripper_position": np.array([robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0) > 0.02]),
-			"prompt": "Move the end effector to be above the blue plate.",
+			"observation/state": state,
+			"prompt": "pick up the white block from the blue plate.",
 		}
 
 		action_chunk = policy_client.infer(observation)["actions"]
 
+		# print(action_chunk)
+
 		robot_controller.execute_action_chunk(action_chunk)
 
-		print(action_chunk)
 		iteration += 1
-
-		# print(action_chunk)
 
 	rospy.loginfo("RobotControl node finished.")
 
