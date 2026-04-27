@@ -25,7 +25,7 @@
   <joint name="ee_camera_joint" type="fixed">
     <parent link="panda_hand"/>
     <child link="ee_camera_link"/>
-    <origin xyz="0.04 0 0.05" rpy="0 -2.1 0"/>
+    <origin xyz="0.03 0 0.03" rpy="3.14159 -1.45 0"/>
   </joint>
 
   <gazebo reference="ee_camera_link">
@@ -71,7 +71,7 @@
   <joint name="scene_camera_joint" type="fixed">
     <parent link="panda_link0"/>
     <child link="scene_camera_link"/>
-    <origin xyz="1 0 1" rpy="3.1415 2.355 0"/>
+    <origin xyz="1 0 0.9" rpy="3.1415 2.355 0"/>
   </joint>
 
   <gazebo reference="scene_camera_link">
@@ -85,7 +85,7 @@
         <format>R8G8B8</format>
       </image>
       <clip>
-        <near>0.1</near>
+        <near>0.05</near>
         <far>100</far>
       </clip>
     </camera>
