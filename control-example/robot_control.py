@@ -223,13 +223,48 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 	pose.orientation.w = float(ow)
 	return pose
 
+def build_observation(env="pi05_libero", prompt="pick up the white block from the blue plate.", robot_controller=None):
+	wrist_img = image_tools.convert_to_uint8(
+		image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
+	)
+	scene_img = image_tools.convert_to_uint8(
+		image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
+	)
+	if env == "pi05_libero":
+		ee_pos, ee_rot = robot_controller.get_ee_pose()
+		
+		rospy.loginfo(f"Current EE pose & rot: {ee_pos} & {ee_rot}")
+		
+		state = np.concatenate([
+			ee_pos,           # idx 0,1,2  (m)
+			ee_rot,           # idx 3,4,5  (rad)
+			[1, -1],        # idx 6,7    (mirrored, see norm_stats)
+		]).astype(np.float32)
+
+		observation = {
+			"observation/image": scene_img,
+			"observation/wrist_image": wrist_img,
+			"observation/state": state,
+			"prompt": prompt,
+		}
+		return observation
+	# elif env == "pi05_droid":
+	# 	observation = {
+	# 		"observation/image": scene_img,
+	# 		"observation/wrist_image": wrist_img,
+	# 		"observation/state": np.zeros(8, dtype=np.float32),  # Placeholder state vector
+	# 		"prompt": prompt,
+	# 	}
+	# 	return observation
+	else:
+		raise ValueError(f"Unsupported env: {env}")
 
 def main():
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
 
-	# ee_pose = _build_pose(0.41085583533713035, -0.20026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
+	# ee_pose = _build_pose(0.51085583533713035, -0.350026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
 
 	# robot_controller.move_to(ee_pose)
 	# return
@@ -243,26 +278,7 @@ def main():
 
 	iteration = 0
 	while True:
-		ee_pos, ee_rot = robot_controller.get_ee_pose()
-		
-		rospy.loginfo(f"Current EE pose & rot: {ee_pos} & {ee_rot}")
-		
-		state = np.concatenate([
-			ee_pos,           # idx 0,1,2  (m)
-			ee_rot,           # idx 3,4,5  (rad)
-			[1, -1],        # idx 6,7    (mirrored, see norm_stats)
-		]).astype(np.float32)
-
-		observation = {
-			"observation/image": image_tools.convert_to_uint8(
-				image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
-			),
-			"observation/wrist_image": image_tools.convert_to_uint8(
-				image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
-			),
-			"observation/state": state,
-			"prompt": "pick up the white block from the blue plate.",
-		}
+		observation = build_observation(env="pi05_libero", prompt="pick up the white block", robot_controller=robot_controller)
 
 		action_chunk = policy_client.infer(observation)["actions"]
 
