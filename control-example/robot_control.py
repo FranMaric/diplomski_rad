@@ -15,6 +15,19 @@ from franka_gripper.msg import GraspActionGoal, MoveActionGoal
 from openpi_client import image_tools
 from openpi_client import websocket_client_policy
 
+def _quat_to_axis_angle(q_xyzw):
+	"""Quaternion (x,y,z,w) -> 3-vector (axis * angle), shortest-path."""
+	x, y, z, w = q_xyzw
+	if w < 0:
+		x, y, z, w = -x, -y, -z, -w
+	sin_half = float(np.sqrt(x*x + y*y + z*z))
+	angle = 2.0 * float(np.arctan2(sin_half, w))
+	if sin_half < 1e-8:
+		return np.zeros(3, dtype=np.float64)
+	axis = np.array([x, y, z], dtype=np.float64) / sin_half
+	return axis * angle
+
+
 class RobotControl:
 	"""ROS1 (Noetic) helper for controlling Franka pose and gripper."""
 
@@ -54,6 +67,8 @@ class RobotControl:
 		)
 
 		self._cv_bridge = CvBridge()
+		self._latest_ee_image = None
+		self._latest_scene_image = None
 
 		self._ee_image_sub = rospy.Subscriber(
 			ee_image_topic,
@@ -71,6 +86,9 @@ class RobotControl:
 
 		self.ARM_JOINTS = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
 		self._last_gripper_width = None
+
+		# Edge-triggered gripper state. Start known-open.
+		self._gripper_state = "open"
 
 		self._tf_listener = tf.TransformListener()
 
@@ -103,20 +121,19 @@ class RobotControl:
 		return [d[j] for j in self.ARM_JOINTS]
 
 	def get_ee_pose(self, ee_frame="panda_EE"):
-		"""Returns the current EE pose in self.frame_id, or None on TF failure."""
+		"""Returns (translation, quaternion_xyzw) in self.frame_id, or (None, None) on TF failure."""
 		try:
 			self._tf_listener.waitForTransform(
 				self.frame_id, ee_frame, rospy.Time(0), rospy.Duration(1.0)
 			)
-			translation, rot = self._tf_listener.lookupTransform(
+			translation, quaternion = self._tf_listener.lookupTransform(
 				self.frame_id, ee_frame, rospy.Time(0)
 			)
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
 			rospy.logwarn(f"TF lookup failed: {e}")
-			return None
+			return None, None
 
-		rpy = tf.transformations.euler_from_quaternion(rot)
-		return (translation, rpy)
+		return (translation, quaternion)
 
 	def move_to(self, pose):
 		"""
@@ -163,7 +180,30 @@ class RobotControl:
 		msg.goal.force = float(force)
 
 		self._gripper_grasp_pub.publish(msg)
-	
+
+	def apply_gripper_action(self, action_g):
+		"""
+		Edge-triggered absolute gripper command from policy.
+		action_g in [-1, +1]: < -0.5 -> open, > +0.5 -> close, between -> hold.
+		Avoids spamming action goals at 20 Hz (which causes preempt stutter).
+		"""
+		desired = self._gripper_state
+		if action_g > 0.5:
+			desired = "closed"
+		elif action_g < -0.5:
+			desired = "open"
+
+		if desired == self._gripper_state:
+			return
+
+		if desired == "closed":
+			self.gripper_close()
+		else:
+			self.gripper_open()
+
+		self._gripper_state = desired
+		rospy.loginfo(f"Gripper -> {desired} (action_g={action_g:+.3f})")
+
 	def _ee_image_cb(self, msg):
 		self._latest_ee_image = msg
 
@@ -182,32 +222,45 @@ class RobotControl:
 	
 	def execute_action_chunk(self, action_chunk):
 		ACTION_RATE = 20.0  # Hz
-		COMPLETE_ACTIONS = len(action_chunk)
+		REPLAN_STEPS = 5 # len(action_chunk)
 
 		rate = rospy.Rate(ACTION_RATE)
 
-		for i in range(COMPLETE_ACTIONS):
+		for i in range(REPLAN_STEPS):
 			action = action_chunk[i]
-			ee_translation, ee_rpy = self.get_ee_pose()
-			if ee_translation is None or ee_rpy is None:
+			ee_translation, ee_quat = self.get_ee_pose()
+			if ee_translation is None or ee_quat is None:
 				rospy.logwarn("Skipping action execution due to missing TF data.")
 				continue
 
 			# Apply deltas from action to current EE pose.
-			ee_translation += tuple(action[0:3])  # delta x,y,z
-			ee_rpy += tuple(action[3:6])          # delta roll,pitch,yaw
+			# action[0:3] are NORMALIZED [-1,1]; scale to meters (robosuite OSC default 0.05).
+			# action[3:6] are axis-angle deltas in radians; compose via quaternion multiplication.
+			ee_translation = np.array(ee_translation) + np.array(action[0:3]) * 0.05
+
+			delta_rot = np.array(action[3:6], dtype=np.float64)
+			angle = float(np.linalg.norm(delta_rot))
+			if angle > 1e-8:
+				axis = delta_rot / angle
+				dq = tf.transformations.quaternion_about_axis(angle, axis)  # xyzw
+				new_quat = tf.transformations.quaternion_multiply(dq, np.array(ee_quat))
+				new_quat = new_quat / np.linalg.norm(new_quat)
+			else:
+				new_quat = np.array(ee_quat)
 
 			# Convert to Pose message and publish.
 			pose = Pose()
 			pose.position.x = ee_translation[0]
 			pose.position.y = ee_translation[1]
 			pose.position.z = ee_translation[2]
-			q = tf.transformations.quaternion_from_euler(ee_rpy[0], ee_rpy[1], ee_rpy[2])
-			pose.orientation.x = q[0]
-			pose.orientation.y = q[1]
-			pose.orientation.z = q[2]
-			pose.orientation.w = q[3]
+			pose.orientation.x = new_quat[0]
+			pose.orientation.y = new_quat[1]
+			pose.orientation.z = new_quat[2]
+			pose.orientation.w = new_quat[3]
 			self.move_to(pose)
+
+			# Gripper: absolute command in action[6], edge-triggered.
+			self.apply_gripper_action(float(action[6]))
 
 			rate.sleep()
 
@@ -231,14 +284,16 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 		image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
 	)
 	if env == "pi05_libero":
-		ee_pos, ee_rot = robot_controller.get_ee_pose()
-		
-		rospy.loginfo(f"Current EE pose & rot: {ee_pos} & {ee_rot}")
-		
+		ee_pos, ee_quat = robot_controller.get_ee_pose()
+		ee_axis_angle = _quat_to_axis_angle(ee_quat)
+		finger_joint = robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0)
+
+		rospy.loginfo(f"Current EE pos & axis-angle: {ee_pos} & {ee_axis_angle}")
+
 		state = np.concatenate([
-			ee_pos,           # idx 0,1,2  (m)
-			ee_rot,           # idx 3,4,5  (rad)
-			[1, -1],        # idx 6,7    (mirrored, see norm_stats)
+			ee_pos,           				# idx 0,1,2  (m)
+			ee_axis_angle,           		# idx 3,4,5  (rad, axis-angle)
+			[finger_joint, -finger_joint],  # idx 6,7    (mirrored, see norm_stats)
 		]).astype(np.float32)
 
 		observation = {
@@ -264,7 +319,7 @@ def main():
 
 	robot_controller = RobotControl()
 
-	# ee_pose = _build_pose(0.51085583533713035, -0.350026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
+	# ee_pose = _build_pose(0.41085583533713035, -0.250026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
 
 	# robot_controller.move_to(ee_pose)
 	# return
