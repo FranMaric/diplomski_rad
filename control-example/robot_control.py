@@ -319,6 +319,8 @@ def main():
 
 	robot_controller = RobotControl()
 
+	# robot_controller.gripper_open(width=0.2)
+
 	# ee_pose = _build_pose(0.41085583533713035, -0.250026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
 
 	# robot_controller.move_to(ee_pose)
@@ -333,7 +335,7 @@ def main():
 
 	iteration = 0
 	while True:
-		observation = build_observation(env="pi05_libero", prompt="pick up the white block", robot_controller=robot_controller)
+		observation = build_observation(env="pi05_libero", prompt="pick up the coke can", robot_controller=robot_controller)
 
 		action_chunk = policy_client.infer(observation)["actions"]
 
