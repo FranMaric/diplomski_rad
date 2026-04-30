@@ -21,9 +21,9 @@ RUN cd openpi-client && pip install -e .
 
 RUN source /opt/ros/noetic/setup.bash && catkin_create_pkg robot_control_pkg rospy geometry_msgs franka_gripper
 
-COPY robot_control.py /catkin_ws/src/robot_control_pkg/scripts/robot_control.py
+COPY *.py /catkin_ws/src/robot_control_pkg/scripts/
 
-RUN chmod +x /catkin_ws/src/robot_control_pkg/scripts/robot_control.py
+RUN chmod +x /catkin_ws/src/robot_control_pkg/scripts/*.py
 
 WORKDIR /catkin_ws
 

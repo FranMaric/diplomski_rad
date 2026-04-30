@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
-from email.header import Header
+USE_REAL_CAMERAS = True  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
 
 import rospy
 import tf
 from geometry_msgs.msg import Pose, PoseStamped
 from sensor_msgs.msg import JointState
-from sensor_msgs.msg import Image
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from cv_bridge import CvBridge
-import cv2
 import numpy as np
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
 from openpi_client import image_tools
 from openpi_client import websocket_client_policy
+if USE_REAL_CAMERAS:
+    from webcamera import WebCamera
+else:
+    from sensor_msgs.msg import Image
+    from cv_bridge import CvBridge
 
 def _quat_to_axis_angle(q_xyzw):
 	"""Quaternion (x,y,z,w) -> 3-vector (axis * angle), shortest-path."""
@@ -38,6 +40,7 @@ class RobotControl:
 		gripper_move_topic="/franka_gripper/move/goal",
 		gripper_grasp_topic="/franka_gripper/grasp/goal",
 		joint_states_topic="/joint_states",
+		camera_indices=[0, 2],
 		ee_image_topic="/ee_camera/image_raw",
 		scene_image_topic="/scene_camera/image_raw",
 		pose_publish_rate_hz=60.0,
@@ -66,23 +69,18 @@ class RobotControl:
 			queue_size=10,
 		)
 
-		self._cv_bridge = CvBridge()
-		self._latest_ee_image = None
-		self._latest_scene_image = None
-
-		self._ee_image_sub = rospy.Subscriber(
-			ee_image_topic,
-			Image,
-			self._ee_image_cb,
-			queue_size=10,
-		)
-
-		self._scene_image_sub = rospy.Subscriber(
-			scene_image_topic,
-			Image,
-			self._scene_image_cb,
-			queue_size=10,
-		)
+		if USE_REAL_CAMERAS:
+			self._camera = WebCamera(camera_indices=camera_indices)
+		else:
+			self._cv_bridge = CvBridge()
+			self._latest_ee_image = None
+			self._latest_scene_image = None
+			self._ee_image_sub = rospy.Subscriber(
+				ee_image_topic, Image, self._ee_image_cb, queue_size=10,
+			)
+			self._scene_image_sub = rospy.Subscriber(
+				scene_image_topic, Image, self._scene_image_cb, queue_size=10,
+			)
 
 		self.ARM_JOINTS = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
 		self._last_gripper_width = None
@@ -211,11 +209,15 @@ class RobotControl:
 		self._latest_scene_image = msg
 
 	def get_latest_ee_image(self):
+		if USE_REAL_CAMERAS:
+			return self._camera.get_image(0)
 		if self._latest_ee_image is None:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="bgr8")
 
 	def get_latest_scene_image(self):
+		if USE_REAL_CAMERAS:
+			return self._camera.get_image(1)
 		if self._latest_scene_image is None:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
@@ -319,9 +321,9 @@ def main():
 
 	robot_controller = RobotControl()
 
-	# robot_controller.gripper_open(width=0.2)
+	# robot_controller.gripper_open()
 
-	# ee_pose = _build_pose(0.41085583533713035, -0.250026636761991015456, 0.62930005044823294, 0.9999988, 0.0001545, 0.0013909, 0.0007167)
+	# ee_pose = _build_pose(0.5521804078001702, 0.03545474781469954, 0.6770280167101107, -0.9910179470831783, 0.014436862832127084, -0.1317547604250494, -0.017608223402260894)
 
 	# robot_controller.move_to(ee_pose)
 	# return
@@ -334,16 +336,20 @@ def main():
 	rospy.loginfo(f"Current EE pose: {robot_controller.get_ee_pose()}")
 
 	iteration = 0
-	while True:
-		observation = build_observation(env="pi05_libero", prompt="pick up the coke can", robot_controller=robot_controller)
+	try:
+		while not rospy.is_shutdown():
+			observation = build_observation(env="pi05_libero", prompt="pick up the orange object", robot_controller=robot_controller)
 
-		action_chunk = policy_client.infer(observation)["actions"]
+			action_chunk = policy_client.infer(observation)["actions"]
 
-		# print(action_chunk)
+			# print(action_chunk)
 
-		robot_controller.execute_action_chunk(action_chunk)
+			robot_controller.execute_action_chunk(action_chunk)
 
-		iteration += 1
+			iteration += 1
+	finally:
+		if USE_REAL_CAMERAS:
+			robot_controller._camera.close()
 
 	rospy.loginfo("RobotControl node finished.")
 

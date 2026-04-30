@@ -19,6 +19,7 @@ Controls (when running standalone):
 """
 
 import sys
+from typing import List, Union
 import cv2
 import numpy as np
 
@@ -26,14 +27,14 @@ import numpy as np
 class WebCamera:
     def __init__(
         self,
-        camera_indices: list[int] | int = 0,
+        camera_indices: Union[List[int], int] = 0,
         width: int = 1280,
         height: int = 720,
     ):
         if isinstance(camera_indices, int):
             camera_indices = [camera_indices]
         self._indices = camera_indices
-        self._caps: list[cv2.VideoCapture] = []
+        self._caps: List[cv2.VideoCapture] = []
 
         for idx in camera_indices:
             cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
@@ -63,7 +64,7 @@ class WebCamera:
             raise RuntimeError(f"Failed to grab frame from camera position {camera}.")
         return frame
 
-    def get_images(self) -> list[np.ndarray]:
+    def get_images(self) -> List[np.ndarray]:
         """Return one BGR frame from every opened camera."""
         return [self.get_image(i) for i in range(len(self._caps))]
 
