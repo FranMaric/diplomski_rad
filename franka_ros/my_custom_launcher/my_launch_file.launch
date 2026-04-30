@@ -37,7 +37,7 @@
         type="spawner"
         respawn="false"
         output="screen"
-        args="cartesian_impedance_example_controller"/> <!-- position_joint_trajectory_controller -->
+        args="position_joint_trajectory_controller"/> <!-- cartesian_impedance_example_controller / position_joint_trajectory_controller -->
 
   <node pkg="rviz"
         type="rviz"

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 USE_REAL_CAMERAS = True  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
+ACTION_RATE = 20.0  # Hz
+REPLAN_STEPS = 5 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
 
 import rospy
 import tf
@@ -222,10 +224,7 @@ class RobotControl:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
 	
-	def execute_action_chunk(self, action_chunk):
-		ACTION_RATE = 20.0  # Hz
-		REPLAN_STEPS = 5 # len(action_chunk)
-
+	def execute_cartesian_action_chunk(self, action_chunk):
 		rate = rospy.Rate(ACTION_RATE)
 
 		for i in range(REPLAN_STEPS):
@@ -266,6 +265,38 @@ class RobotControl:
 
 			rate.sleep()
 
+	def execute_joint_action_chunk(self, action_chunk):
+		"""
+		Execute a chunk of joint-velocity actions on the position_joint_trajectory_controller.
+
+		Each action row is expected to be [v0..v6, gripper] where v0-v6 are joint
+		velocity deltas (rad/s) for ARM_JOINTS. All REPLAN_STEPS points are sent
+		as a single JointTrajectory so the controller can plan the full motion
+		smoothly. Gripper commands are still applied step-by-step at ACTION_RATE.
+		"""
+		dt = 1.0 / ACTION_RATE
+		rate = rospy.Rate(ACTION_RATE)
+
+		joint_positions = np.array(self.get_arm_joint_values(), dtype=np.float64)
+
+		traj = JointTrajectory()
+		traj.header.stamp = rospy.Time.now()
+		traj.joint_names = self.ARM_JOINTS
+
+		for i in range(REPLAN_STEPS):
+			action = np.clip(action_chunk[i], -1, 1)
+			joint_positions = joint_positions + np.array(action[0:7], dtype=np.float64) * dt
+			pt = JointTrajectoryPoint()
+			pt.positions = joint_positions.tolist()
+			pt.time_from_start = rospy.Duration((i + 1) * dt)
+			traj.points.append(pt)
+
+		self._joint_trajectory_pub.publish(traj)
+
+		for i in range(REPLAN_STEPS):
+			self.apply_gripper_action(float(np.clip(action_chunk[i], -1, 1)[7]))
+			rate.sleep()
+
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
 	pose = Pose()
@@ -285,7 +316,7 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 	scene_img = image_tools.convert_to_uint8(
 		image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
 	)
-	if env == "pi05_libero":
+	if env == "pi05_libero": # requires ee cartesian controller
 		ee_pos, ee_quat = robot_controller.get_ee_pose()
 		ee_axis_angle = _quat_to_axis_angle(ee_quat)
 		finger_joint = robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0)
@@ -305,14 +336,17 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 			"prompt": prompt,
 		}
 		return observation
-	# elif env == "pi05_droid":
-	# 	observation = {
-	# 		"observation/image": scene_img,
-	# 		"observation/wrist_image": wrist_img,
-	# 		"observation/state": np.zeros(8, dtype=np.float32),  # Placeholder state vector
-	# 		"prompt": prompt,
-	# 	}
-	# 	return observation
+	elif env == "pi05_droid": # requires joint trajectory controller
+		joint_position = np.array(robot_controller.get_arm_joint_values(), dtype=np.float32)
+
+		observation = {
+			"observation/exterior_image_1_left": scene_img,
+			"observation/wrist_image_left": wrist_img,
+			"observation/joint_position": joint_position,
+			"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0),
+			"prompt": prompt,
+		}
+		return observation
 	else:
 		raise ValueError(f"Unsupported env: {env}")
 
@@ -338,13 +372,13 @@ def main():
 	iteration = 0
 	try:
 		while not rospy.is_shutdown():
-			observation = build_observation(env="pi05_libero", prompt="pick up the orange object", robot_controller=robot_controller)
+			observation = build_observation(env="pi05_droid", prompt="pick up the white block", robot_controller=robot_controller)
 
 			action_chunk = policy_client.infer(observation)["actions"]
 
 			# print(action_chunk)
 
-			robot_controller.execute_action_chunk(action_chunk)
+			robot_controller.execute_joint_action_chunk(action_chunk)
 
 			iteration += 1
 	finally:
