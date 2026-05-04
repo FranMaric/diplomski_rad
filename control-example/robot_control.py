@@ -6,6 +6,7 @@ REPLAN_STEPS = 5 # how many steps to execute from each policy inference before r
 POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE = "joint_velocity" # "cartesian_impedance" or "joint_velocity"
+VELOCITY_SCALING = 0.2
 
 MODEL_PROMPT = "pick up the white block from the blue plate"
 
@@ -287,6 +288,7 @@ class RobotControl:
 		rate = rospy.Rate(ACTION_RATE)
 		for action in action_chunk[:REPLAN_STEPS]:
 			velocities = action[:7]
+			velocities = velocities * VELOCITY_SCALING
 			self._vel_ctrl.apply_velocity(velocities)
 
 			desired = "open" if action[7] > 0.5 else "closed"
