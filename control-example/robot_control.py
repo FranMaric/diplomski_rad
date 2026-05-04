@@ -18,6 +18,7 @@ import numpy as np
 from franka_gripper.msg import GraspActionGoal, MoveActionGoal
 from openpi_client import image_tools
 from openpi_client import websocket_client_policy
+from joint_velocity_control import JointVelocityController
 if USE_REAL_CAMERAS:
     from webcamera import WebCamera
 else:
@@ -99,6 +100,8 @@ class RobotControl:
 
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
+
+		self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
 
 	def _joint_states_cb(self, msg):
 		self._joint_names = list(msg.name)
@@ -279,28 +282,13 @@ class RobotControl:
 		as a single JointTrajectory so the controller can plan the full motion
 		smoothly. Gripper commands are still applied step-by-step at ACTION_RATE.
 		"""
-		dt = 1.0 / ACTION_RATE
-		rate = rospy.Rate(ACTION_RATE)
-
-		joint_positions = np.array(self.get_arm_joint_values(), dtype=np.float64)
-
-		clipped = [np.clip(action_chunk[i], -1, 1) for i in range(REPLAN_STEPS)]
-
-		traj = JointTrajectory()
-		traj.header.stamp = rospy.Time.now()
-		traj.joint_names = self.ARM_JOINTS
-
-		for i, action in enumerate(clipped):
-			joint_positions = joint_positions + np.array(action[0:7], dtype=np.float64) * dt
-			pt = JointTrajectoryPoint()
-			pt.positions = joint_positions.tolist()
-			pt.time_from_start = rospy.Duration((i + 1) * dt)
-			traj.points.append(pt)
-
-		self._joint_trajectory_pub.publish(traj)
 
 		# DROID convention: >0.5 = open, <=0.5 = close (position-based, edge-triggered)
-		for action in clipped:
+		rate = rospy.Rate(ACTION_RATE)
+		for action in action_chunk[:REPLAN_STEPS]:
+			velocities = action[:7]
+			self._vel_ctrl.apply_velocity(velocities)
+
 			desired = "open" if action[7] > 0.5 else "closed"
 			if desired != self._gripper_state:
 				self.gripper_open() if desired == "open" else self.gripper_close()
