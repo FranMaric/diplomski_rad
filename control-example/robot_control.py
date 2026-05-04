@@ -215,14 +215,14 @@ class RobotControl:
 			return self._camera.get_image(0)
 		if self._latest_ee_image is None:
 			return None
-		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="bgr8")
+		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="rgb8")
 
 	def get_latest_scene_image(self):
 		if USE_REAL_CAMERAS:
 			return self._camera.get_image(1)
 		if self._latest_scene_image is None:
 			return None
-		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="bgr8")
+		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="rgb8")
 	
 	def execute_cartesian_action_chunk(self, action_chunk):
 		rate = rospy.Rate(ACTION_RATE)
@@ -279,12 +279,13 @@ class RobotControl:
 
 		joint_positions = np.array(self.get_arm_joint_values(), dtype=np.float64)
 
+		clipped = [np.clip(action_chunk[i], -1, 1) for i in range(REPLAN_STEPS)]
+
 		traj = JointTrajectory()
 		traj.header.stamp = rospy.Time.now()
 		traj.joint_names = self.ARM_JOINTS
 
-		for i in range(REPLAN_STEPS):
-			action = np.clip(action_chunk[i], -1, 1)
+		for i, action in enumerate(clipped):
 			joint_positions = joint_positions + np.array(action[0:7], dtype=np.float64) * dt
 			pt = JointTrajectoryPoint()
 			pt.positions = joint_positions.tolist()
@@ -293,8 +294,13 @@ class RobotControl:
 
 		self._joint_trajectory_pub.publish(traj)
 
-		for i in range(REPLAN_STEPS):
-			self.apply_gripper_action(float(np.clip(action_chunk[i], -1, 1)[7]))
+		# DROID convention: >0.5 = open, <=0.5 = close (position-based, edge-triggered)
+		for action in clipped:
+			desired = "open" if action[7] > 0.5 else "closed"
+			if desired != self._gripper_state:
+				self.gripper_open() if desired == "open" else self.gripper_close()
+				self._gripper_state = desired
+				rospy.loginfo(f"Gripper -> {desired} (action[7]={action[7]:+.3f})")
 			rate.sleep()
 
 
@@ -339,11 +345,13 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 	elif env == "pi05_droid": # requires joint trajectory controller
 		joint_position = np.array(robot_controller.get_arm_joint_values(), dtype=np.float32)
 
+		gripper_position = np.array([robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0.0)], dtype=np.float32)
+
 		observation = {
 			"observation/exterior_image_1_left": scene_img,
 			"observation/wrist_image_left": wrist_img,
 			"observation/joint_position": joint_position,
-			"observation/gripper_position": robot_controller.get_joint_values_dict().get("panda_finger_joint1", 0),
+			"observation/gripper_position": gripper_position,
 			"prompt": prompt,
 		}
 		return observation
