@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
-USE_REAL_CAMERAS = True  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
-ACTION_RATE = 20.0  # Hz
+USE_REAL_CAMERAS = False  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
+ACTION_RATE = 15.0  # Hz
 REPLAN_STEPS = 5 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+POLICY_SERVER_HOST = "161.53.68.175" # steffy
+MODEL_ENV = "pi05_droid" # "pi05_libero" or "pi05_droid"
+CONTROLLER_TYPE = "joint_velocity" # "cartesian_impedance" or "joint_velocity"
+
+MODEL_PROMPT = "pick up the white block from the blue plate"
 
 import rospy
 import tf
@@ -265,7 +270,7 @@ class RobotControl:
 
 			rate.sleep()
 
-	def execute_joint_action_chunk(self, action_chunk):
+	def execute_joint_velocity_action_chunk(self, action_chunk):
 		"""
 		Execute a chunk of joint-velocity actions on the position_joint_trajectory_controller.
 
@@ -372,7 +377,7 @@ def main():
 
 	rospy.loginfo("RobotControl node connecting to policy server.")
 	
-	policy_client = websocket_client_policy.WebsocketClientPolicy(host="161.53.68.175", port=8000)
+	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
 	rospy.loginfo("RobotControl node connected to policy server.")
 	rospy.loginfo(f"Current EE pose: {robot_controller.get_ee_pose()}")
@@ -380,13 +385,16 @@ def main():
 	iteration = 0
 	try:
 		while not rospy.is_shutdown():
-			observation = build_observation(env="pi05_droid", prompt="pick up the white block", robot_controller=robot_controller)
+			observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
 
 			action_chunk = policy_client.infer(observation)["actions"]
 
 			# print(action_chunk)
 
-			robot_controller.execute_joint_action_chunk(action_chunk)
+			if CONTROLLER_TYPE == "cartesian_impedance":
+				robot_controller.execute_cartesian_action_chunk(action_chunk)
+			elif CONTROLLER_TYPE == "joint_velocity":
+				robot_controller.execute_joint_velocity_action_chunk(action_chunk)
 
 			iteration += 1
 	finally:
