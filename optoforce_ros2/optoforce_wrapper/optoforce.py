@@ -233,7 +233,7 @@ class OptoforceDriver(object):
             # Error code 4, meaning 'Interrupted system call'
             # It is raised when reading from the serial connexion and ROS tries
             # to stop the node.
-            if e[0] != 4:
+            if e.args[0] != 4:
                 raise
         except serial.serialutil.SerialException as e:
             # Same as previous except

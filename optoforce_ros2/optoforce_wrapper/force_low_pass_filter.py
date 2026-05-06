@@ -8,7 +8,7 @@ class FullWrenchFilterNode(Node):
         super().__init__('wrench_filter_node')
         
         # Filter strength (0.01 is strong/smooth)
-        self.alpha = 0.1
+        self.alpha = 0.07
         
         # Dictionary to store the 'previous' filtered state for all 6 axes
         # Keys: fx, fy, fz, tx, ty, tz

@@ -104,7 +104,11 @@ class OptoforceNode(Node):
 
         # Configure the sensor
         self.config(speed, filter_freq, zero)
-        self.get_logger().info("Starting to listen to the sensor")
+
+        self._bias = None
+        self._calibration_samples = []
+        self._calibration_target = 500
+        self.get_logger().info(f"Collecting {self._calibration_target} samples for bias calibration...")
 
         publish_rate = 100
         self.create_timer(1.0 / publish_rate, self.run)
@@ -122,23 +126,42 @@ class OptoforceNode(Node):
         try:
             data = self._driver.read()
             if isinstance(data, optoforce.OptoforceData):
-                self._publish(data)
+                if self._bias is None:
+                    self._calibration_samples.append(data)
+                    if len(self._calibration_samples) >= self._calibration_target:
+                        self._compute_bias()
+                else:
+                    self._publish(data)
             elif isinstance(data, optoforce.OptoforceSerialNumber):
                 self.get_logger().info(f"The sensor's serial number is {data}")
         except Exception as e:
             self.get_logger().error(f"Caught exception in read loop: {e}")
 
+    def _compute_bias(self):
+        n = len(self._calibration_samples)
+        nb_sensors = self._driver.nb_sensors()
+        nb_axis = self._driver.nb_axis()
+        self._bias = [
+            [sum(s.force[i][j] for s in self._calibration_samples) / n for j in range(nb_axis)]
+            for i in range(nb_sensors)
+        ]
+        self._calibration_samples = []
+        for i, sensor_bias in enumerate(self._bias):
+            self.get_logger().info(f"Sensor {i} bias — fx:{sensor_bias[0]:.4f} fy:{sensor_bias[1]:.4f} fz:{sensor_bias[2]:.4f}" +
+                (f" tx:{sensor_bias[3]:.4f} ty:{sensor_bias[4]:.4f} tz:{sensor_bias[5]:.4f}" if self._driver.nb_axis() == 6 else ""))
+        self.get_logger().info("Bias calibration complete. Starting to publish.")
+
     def _publish(self, data):
         stamp = self.get_clock().now().to_msg()
         for i in range(self._driver.nb_sensors()):
             self._wrenches[i].header.stamp = stamp
-            self._wrenches[i].wrench.force.x = float(data.force[i][0])
-            self._wrenches[i].wrench.force.y = float(data.force[i][1])
-            self._wrenches[i].wrench.force.z = float(data.force[i][2])
+            self._wrenches[i].wrench.force.x = float(data.force[i][0]) - self._bias[i][0]
+            self._wrenches[i].wrench.force.y = float(data.force[i][1]) - self._bias[i][1]
+            self._wrenches[i].wrench.force.z = float(data.force[i][2]) - self._bias[i][2]
             if self._driver.nb_axis() == 6:
-                self._wrenches[i].wrench.torque.x = float(data.force[i][3])
-                self._wrenches[i].wrench.torque.y = float(data.force[i][4])
-                self._wrenches[i].wrench.torque.z = float(data.force[i][5])
+                self._wrenches[i].wrench.torque.x = float(data.force[i][3]) - self._bias[i][3]
+                self._wrenches[i].wrench.torque.y = float(data.force[i][4]) - self._bias[i][4]
+                self._wrenches[i].wrench.torque.z = float(data.force[i][5]) - self._bias[i][5]
             self._publishers[i].publish(self._wrenches[i])
 
 def main(args=None):
