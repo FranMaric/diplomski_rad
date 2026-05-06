@@ -22,7 +22,13 @@ def generate_launch_description():
         executable = 'force_low_pass_filter'
     )
 
+    estimate_force_node = Node(
+        package = 'optoforce_wrapper',
+        executable = 'estimate_force'
+    )
+
     return LaunchDescription([
         optoforce_node,
-        optoforce_filter_node
+        optoforce_filter_node,
+        estimate_force_node
     ])

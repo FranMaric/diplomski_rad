@@ -28,7 +28,9 @@ setup(
     entry_points={
         'console_scripts': [
             "optoforce_node = optoforce_wrapper.optoforce_node:main",
-            "force_low_pass_filter = optoforce_wrapper.force_low_pass_filter:main"
+            "force_low_pass_filter = optoforce_wrapper.force_low_pass_filter:main",
+            "read_current_avg_value = optoforce_wrapper.read_current_avg_value:main",
+            "estimate_force = optoforce_wrapper.estimate_force:main"
         ],
     },
 )

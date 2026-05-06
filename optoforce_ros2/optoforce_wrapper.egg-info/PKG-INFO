@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: optoforce-wrapper
+Version: 0.0.1
+Summary: ROS 2 wrapper for Optoforce 3-axis force sensor.
+Maintainer: Jan Kaniuka
+Maintainer-email: jasiek491@gmail.com
+License: MIT

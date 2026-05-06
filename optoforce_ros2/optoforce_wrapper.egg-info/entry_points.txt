@@ -1,0 +1,5 @@
+[console_scripts]
+estimate_mass_from_force = optoforce_wrapper.estimate_mass_from_force:main
+force_low_pass_filter = optoforce_wrapper.force_low_pass_filter:main
+optoforce_node = optoforce_wrapper.optoforce_node:main
+read_current_avg_value = optoforce_wrapper.read_current_avg_value:main
