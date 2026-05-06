@@ -1,0 +1,8 @@
+/optoforce_node:
+  ros__parameters:
+    sensor_serial_numbers: ['HEX_H']
+    port: ['/dev/ttyACM0']
+    speed: [100]
+    filter: [15]
+    zero: [True]
+    scale: "[[560, 546, 81]]"
