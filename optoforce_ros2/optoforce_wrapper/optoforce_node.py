@@ -126,6 +126,7 @@ class OptoforceNode(Node):
         try:
             data = self._driver.read()
             if isinstance(data, optoforce.OptoforceData):
+                data.force[0][2] = -data.force[0][2]  # Invert Z axis
                 if self._bias is None:
                     self._calibration_samples.append(data)
                     if len(self._calibration_samples) >= self._calibration_target:
