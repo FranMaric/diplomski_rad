@@ -47,14 +47,14 @@ class FullWrenchFilterNode(Node):
         filtered_msg.header = msg.header
         
         # Apply filter to Forces
-        # filtered_msg.wrench.force.x = self.filter_value('fx', msg.wrench.force.x)
-        # filtered_msg.wrench.force.y = self.filter_value('fy', msg.wrench.force.y)
+        filtered_msg.wrench.force.x = self.filter_value('fx', msg.wrench.force.x)
+        filtered_msg.wrench.force.y = self.filter_value('fy', msg.wrench.force.y)
         filtered_msg.wrench.force.z = self.filter_value('fz', msg.wrench.force.z)
         
         # Apply filter to Torques
-        # filtered_msg.wrench.torque.x = self.filter_value('tx', msg.wrench.torque.x)
-        # filtered_msg.wrench.torque.y = self.filter_value('ty', msg.wrench.torque.y)
-        # filtered_msg.wrench.torque.z = self.filter_value('tz', msg.wrench.torque.z)
+        filtered_msg.wrench.torque.x = self.filter_value('tx', msg.wrench.torque.x)
+        filtered_msg.wrench.torque.y = self.filter_value('ty', msg.wrench.torque.y)
+        filtered_msg.wrench.torque.z = self.filter_value('tz', msg.wrench.torque.z)
         
         # Publish the full 6-DOF filtered wrench
         self.publisher_.publish(filtered_msg)

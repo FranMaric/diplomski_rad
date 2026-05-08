@@ -38,7 +38,7 @@ class OptoforceNode(Node):
         # Declare parameters
         self.declare_parameter(
             'port',
-            '/dev/ttyACM0',
+            '/dev/ttyACM1',
             ParameterDescriptor(description='The serial port for the sensor.')
         )
         self.declare_parameter(

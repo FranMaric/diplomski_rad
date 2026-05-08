@@ -14,7 +14,7 @@ class ForceEstimatorNode(Node):
         self.buffer_size = 20
         
         # 1. Load Data and Train Model
-        self.csv_path = '/home/rf-blue/Desktop/fran_ws/optoforce_ros2/data/captured_values.csv'
+        self.csv_path = '/home/fran/Desktop/fran_ws/optoforce_ros2/data/captured_values.csv'
         self.model = self._train_model()
         if self.model is None:
             self.get_logger().error('Model training failed. Force estimation will not work.')
