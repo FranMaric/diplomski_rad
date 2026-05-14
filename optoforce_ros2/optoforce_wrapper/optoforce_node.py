@@ -37,11 +37,6 @@ class OptoforceNode(Node):
 
         # Declare parameters
         self.declare_parameter(
-            'port',
-            '/dev/ttyACM1',
-            ParameterDescriptor(description='The serial port for the sensor.')
-        )
-        self.declare_parameter(
             'type',
             's-ch/6-axis',
             ParameterDescriptor(description='The type of the sensor.')
@@ -73,7 +68,6 @@ class OptoforceNode(Node):
         )
 
         # Get parameter values
-        port = self.get_parameter('port').get_parameter_value().string_value
         sensor_type = self.get_parameter('type').get_parameter_value().string_value
         starting_index = self.get_parameter('starting_index').get_parameter_value().integer_value
         scaling_factors = self.get_parameter('scale').get_parameter_value().double_array_value
@@ -83,13 +77,19 @@ class OptoforceNode(Node):
 
         # Initialize optoforce driver
         try:
-            self._driver = optoforce.OptoforceDriver(port,
+            self._driver = optoforce.OptoforceDriver("/dev/ttyACM0",
                                                      sensor_type,
                                                      [scaling_factors],
                                                      starting_index)
         except serial.SerialException as e:
-            self.get_logger().fatal(f"Cannot connect to the sensor on port {port}: {e}")
-            sys.exit(1)
+            try:
+                self._driver = optoforce.OptoforceDriver("/dev/ttyACM1",
+                                                        sensor_type,
+                                                        [scaling_factors],
+                                                        starting_index)
+            except serial.SerialException as e:
+                self.get_logger().fatal(f"Cannot connect to the sensor on port {port}: {e}")
+                sys.exit(1)
 
         # Create and advertise publishers for each connected sensor
         self._publishers = []
