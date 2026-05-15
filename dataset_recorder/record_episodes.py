@@ -10,6 +10,7 @@ TOPICS = [
     # "/optoforce_0/wrench_filtered",
     # "/force_estimation",
     "/vrpn_mocap/Brusilica/pose",
+    "/vrpn_mocap/Kalup/pose",
     "/camera_info",
     "/image_raw",
     "/camera/camera/color/image_raw",
