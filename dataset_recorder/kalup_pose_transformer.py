@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Float32
+from std_msgs.msg import Float64
 import math
 
 MOCAP_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -31,9 +31,9 @@ class KalupPoseTransformer(Node):
     def cb(self, msg):
         out = PoseStamped()
         out.header = msg.header
-        out.pose.position.x = msg.pose.position.x + TRANSLATION[0]
-        out.pose.position.y = msg.pose.position.y + TRANSLATION[1]
-        out.pose.position.z = msg.pose.position.z + TRANSLATION[2]
+        out.pose.position.x = round(msg.pose.position.x + TRANSLATION[0], 4)
+        out.pose.position.y = round(msg.pose.position.y + TRANSLATION[1], 4)
+        out.pose.position.z = round(msg.pose.position.z + TRANSLATION[2], 4)
         out.pose.orientation = msg.pose.orientation
         self.pub.publish(out)
 
@@ -49,10 +49,10 @@ class DistanceDeltaPublisher(Node):
         self.kalup_position = None
         self.create_subscription(PoseStamped, '/vrpn_mocap/Brusilica/pose', self.cb_brusilica, MOCAP_QOS)
         self.create_subscription(PoseStamped, '/kalup_cep', self.cb_kalup_cep, MOCAP_QOS)
-        self.pub_x = self.create_publisher(Float32, '/delta_brusilica_kalup_cep/x', 10)
-        self.pub_y = self.create_publisher(Float32, '/delta_brusilica_kalup_cep/y', 10)
-        self.pub_z = self.create_publisher(Float32, '/delta_brusilica_kalup_cep/z', 10)
-        self.pub_xyz = self.create_publisher(Float32, '/delta_brusilica_kalup_cep/euclidean_dist', 10)
+        self.pub_x = self.create_publisher(Float64, '/delta_brusilica_kalup_cep/x', 10)
+        self.pub_y = self.create_publisher(Float64, '/delta_brusilica_kalup_cep/y', 10)
+        self.pub_z = self.create_publisher(Float64, '/delta_brusilica_kalup_cep/z', 10)
+        self.pub_xyz = self.create_publisher(Float64, '/delta_brusilica_kalup_cep/euclidean_dist', 10)
 
 
         print("DistanceDeltaPublisher initialized.")
@@ -65,23 +65,23 @@ class DistanceDeltaPublisher(Node):
             return
         p = msg.pose.position
         k = self.kalup_position
-        msg_x, msg_y, msg_z = Float32(), Float32(), Float32()
-        msg_x.data = p.x - k.x
-        msg_y.data = p.y - k.y
-        msg_z.data = p.z - k.z
+        msg_x, msg_y, msg_z = Float64(), Float64(), Float64()
+        msg_x.data = round(p.x - k.x, 4)
+        msg_y.data = round(p.y - k.y, 4)
+        msg_z.data = round(p.z - k.z, 4)
         self.pub_x.publish(msg_x)
         self.pub_y.publish(msg_y)
         self.pub_z.publish(msg_z)
 
-        msg = Float32()
-        msg.data = euclidean_distance(p, k)
+        msg = Float64()
+        msg.data = round(euclidean_distance(p, k), 4)
         self.pub_xyz.publish(msg)
 
 def main():
     rclpy.init()
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(KalupPoseTransformer())
-    # executor.add_node(DistanceDeltaPublisher())
+    executor.add_node(DistanceDeltaPublisher())
     executor.spin()
 
 main()
