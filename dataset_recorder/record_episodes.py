@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import termios
+import time
 import tty
 
 TOPICS = [
@@ -87,13 +88,18 @@ def main():
 
     print("Episode recorder ready. Press SPACE to start/stop episodes, ESC/Ctrl+C to quit.")
 
+    total_duration = 0.0
+
     while True:
         wait_for_space(f"\nPress SPACE to start episode_{episode}...")
         proc = record_episode(episode)
+        t_start = time.monotonic()
         wait_for_space(f"Recording episode_{episode}. Press SPACE to stop...")
         proc.terminate()
         proc.wait()
-        print(f"episode_{episode} saved.")
+        duration = time.monotonic() - t_start
+        total_duration += duration
+        print(f"episode_{episode} saved.  Duration: {duration:.1f}s  |  Total: {total_duration:.1f}s")
         episode += 1
 
 
