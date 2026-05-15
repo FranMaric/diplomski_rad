@@ -68,6 +68,7 @@ class OptoforceNode(Node):
         )
 
         # Get parameter values
+        port = "/dev/ttyACM0"
         sensor_type = self.get_parameter('type').get_parameter_value().string_value
         starting_index = self.get_parameter('starting_index').get_parameter_value().integer_value
         scaling_factors = self.get_parameter('scale').get_parameter_value().double_array_value
