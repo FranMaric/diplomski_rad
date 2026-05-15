@@ -29,6 +29,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         optoforce_node,
-        optoforce_filter_node,
-        estimate_force_node
+        # optoforce_filter_node,
+        # estimate_force_node
     ])

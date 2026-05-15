@@ -72,26 +72,26 @@ class ForceEstimatorNode(Node):
         # 2. Predict
         predicted_weight = self.model.predict(current_data)[0]
         predicted_force = predicted_weight * 9.81  # Convert mass to force (N)
-        self.prediction_force_buffer.append(predicted_force)
+        # self.prediction_force_buffer.append(predicted_force)
 
         # 3. If buffer is full, calculate average and publish
-        if len(self.prediction_force_buffer) >= self.buffer_size:
-            avg_force = sum(self.prediction_force_buffer) / len(self.prediction_force_buffer)
+        # if len(self.prediction_force_buffer) >= self.buffer_size:
+        #     avg_force = sum(self.prediction_force_buffer) / len(self.prediction_force_buffer)
             
-            # Simple Deadband/Sanity check
-            if avg_force < 0.0:
-                avg_force = 0.0
+        # Simple Deadband/Sanity check
+        if predicted_force < 0.0:
+            predicted_force = 0.0
 
-            # 4. Publish the Result
-            force_msg = Float64()
-            force_msg.data = float(avg_force)
-            self.force_publisher.publish(force_msg)
+        # 4. Publish the Result
+        force_msg = Float64()
+        force_msg.data = float(predicted_force)
+        self.force_publisher.publish(force_msg)
 
-            # Log the output
-            # self.get_logger().info(f"Published Force: {avg_force:.4f} N")
-            
-            # 5. Reset buffer
-            self.prediction_force_buffer = []
+        # Log the output
+        # self.get_logger().info(f"Published Force: {predicted_force:.4f} N")
+        
+        # 5. Reset buffer
+        # self.prediction_force_buffer = []
 
 def main(args=None):
     rclpy.init(args=args)
