@@ -4,6 +4,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 import math
+from scipy.spatial.transform import Rotation
 
 MOCAP_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
@@ -14,9 +15,9 @@ TRANSLATION = [-(0.0277 - 0.006 + 0.03505 + 0.0128),
                -(0.00925 + 0.076 + 0.01415)]  # [x, y, z] in meters
 
 TRANSLATION = [ # dodavanje eksperimentalnih vrijednosti koje rade :shrug:
-    TRANSLATION[0] - 0.005,
-    TRANSLATION[1] + 0.01,
-    TRANSLATION[2] + 0.022,
+    TRANSLATION[0] + 0.0,
+    TRANSLATION[1] + 0.004,
+    TRANSLATION[2] + 0.02,
 ]
 
 class KalupPoseTransformer(Node):
@@ -31,9 +32,11 @@ class KalupPoseTransformer(Node):
     def cb(self, msg):
         out = PoseStamped()
         out.header = msg.header
-        out.pose.position.x = round(msg.pose.position.x + TRANSLATION[0], 4)
-        out.pose.position.y = round(msg.pose.position.y + TRANSLATION[1], 4)
-        out.pose.position.z = round(msg.pose.position.z + TRANSLATION[2], 4)
+        q = msg.pose.orientation
+        dx, dy, dz = Rotation.from_quat([q.x, q.y, q.z, q.w]).apply(TRANSLATION)
+        out.pose.position.x = round(msg.pose.position.x + dx, 4)
+        out.pose.position.y = round(msg.pose.position.y + dy, 4)
+        out.pose.position.z = round(msg.pose.position.z + dz, 4)
         out.pose.orientation = msg.pose.orientation
         self.pub.publish(out)
 
