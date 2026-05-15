@@ -7,3 +7,4 @@ usb_cam:
     image_height: 720
     camera_name: "usb_cam"
     camera_info_url: ""
+    brightness: 150
