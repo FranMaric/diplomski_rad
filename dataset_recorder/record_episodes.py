@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import signal
 import subprocess
 import sys
 import termios
@@ -48,7 +49,9 @@ def wait_for_space(prompt):
 def record_episode(episode_num):
     bag_path = os.path.join(BAGS_DIR, f"episode_{episode_num}")
     cmd = (
-        ["ros2", "bag", "record", "-o", bag_path]
+        ["ros2", "bag", "record", 
+         "-o", bag_path,
+         "--max-cache-size", "524288000"]
         + TOPICS
     )
     env = os.environ.copy()
@@ -84,7 +87,7 @@ def check_topics():
 def main():
     os.makedirs(BAGS_DIR, exist_ok=True)
     check_topics()
-    episode = 1
+    episode = 15
 
     print("Episode recorder ready. Press SPACE to start/stop episodes, ESC/Ctrl+C to quit.")
 
@@ -95,8 +98,12 @@ def main():
         proc = record_episode(episode)
         t_start = time.monotonic()
         wait_for_space(f"Recording episode_{episode}. Press SPACE to stop...")
-        proc.terminate()
-        proc.wait()
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
         duration = time.monotonic() - t_start
         total_duration += duration
         print(f"episode_{episode} saved.  Duration: {duration:.1f}s  |  Total: {total_duration:.1f}s")
