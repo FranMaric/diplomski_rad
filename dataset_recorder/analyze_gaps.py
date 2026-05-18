@@ -12,12 +12,16 @@ def analyze_gaps(bag_path: Path):
     reader = rosbag2_py.SequentialReader()
     reader.open(storage_options, converter_options)
 
+    first_ts: dict[str, int] = {}
     last_ts: dict[str, int] = {}
+    msg_count: dict[str, int] = {}
     max_gap: dict[str, float] = {}
     gap_count: dict[str, int] = {}
 
     while reader.has_next():
         topic, _, timestamp_ns = reader.read_next()
+        if topic not in first_ts:
+            first_ts[topic] = timestamp_ns
         if topic in last_ts:
             gap_s = (timestamp_ns - last_ts[topic]) / 1e9
             if gap_s > max_gap.get(topic, 0.0):
@@ -25,21 +29,29 @@ def analyze_gaps(bag_path: Path):
             if gap_s > 0.1:
                 gap_count[topic] = gap_count.get(topic, 0) + 1
         last_ts[topic] = timestamp_ns
+        msg_count[topic] = msg_count.get(topic, 0) + 1
 
     reader.close()
-    return max_gap, gap_count
+
+    avg_freq: dict[str, float] = {}
+    for topic in msg_count:
+        span_s = (last_ts[topic] - first_ts[topic]) / 1e9
+        avg_freq[topic] = (msg_count[topic] - 1) / span_s if span_s > 0 else 0.0
+
+    return max_gap, gap_count, avg_freq
 
 
 def format_gap_report(bag_path: Path) -> str:
     lines = []
     lines.append(f"Bag: {bag_path.parent.name}")
-    lines.append(f"{'Topic':<45} {'Max gap (s)':>12} {'Gaps >0.1s':>11}")
-    lines.append("-" * 71)
-    gaps, gap_count = analyze_gaps(bag_path)
-    for topic, gap in sorted(gaps.items(), key=lambda x: -x[1]):
+    lines.append(f"{'Topic':<45} {'Max gap (s)':>12} {'Gaps >0.1s':>11} {'Avg freq (Hz)':>14}")
+    lines.append("-" * 86)
+    gaps, gap_count, avg_freq = analyze_gaps(bag_path)
+    for topic, gap in sorted(gaps.items()):
         flag = "  <-- WARNING" if gap > 0.5 else ""
         count = gap_count.get(topic, 0)
-        lines.append(f"{topic:<45} {gap:>12.4f} {count:>11}{flag}")
+        freq = avg_freq.get(topic, 0.0)
+        lines.append(f"{topic:<45} {gap:>12.4f} {count:>11} {freq:>14.2f}{flag}")
     return "\n".join(lines)
 
 
