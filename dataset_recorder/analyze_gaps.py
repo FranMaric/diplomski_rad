@@ -30,19 +30,22 @@ def analyze_gaps(bag_path: Path):
     return max_gap, gap_count
 
 
-def print_gap_report(bag_path: Path):
-    print(f"Bag: {bag_path.parent.name}")
-    print(f"{'Topic':<45} {'Max gap (s)':>12} {'Gaps >0.1s':>11}")
-    print("-" * 71)
+def format_gap_report(bag_path: Path) -> str:
+    lines = []
+    lines.append(f"Bag: {bag_path.parent.name}")
+    lines.append(f"{'Topic':<45} {'Max gap (s)':>12} {'Gaps >0.1s':>11}")
+    lines.append("-" * 71)
     gaps, gap_count = analyze_gaps(bag_path)
     for topic, gap in sorted(gaps.items(), key=lambda x: -x[1]):
         flag = "  <-- WARNING" if gap > 0.5 else ""
         count = gap_count.get(topic, 0)
-        print(f"{topic:<45} {gap:>12.4f} {count:>11}{flag}")
+        lines.append(f"{topic:<45} {gap:>12.4f} {count:>11}{flag}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
     bags_dir = Path(__file__).parent / "bags"
+    report_path = Path(__file__).parent / "gap_analysis_report.txt"
 
     if len(sys.argv) > 1:
         episode_dirs = [bags_dir / sys.argv[1]]
@@ -52,10 +55,16 @@ if __name__ == "__main__":
             key=lambda d: int(d.name.split("_")[1]),
         )
 
-    for bag_dir in episode_dirs:
+    sections = []
+    total = len(episode_dirs)
+    for i, bag_dir in enumerate(episode_dirs, 1):
+        print(f"{i}/{total} {bag_dir.name}", flush=True)
         mcap_files = list(bag_dir.glob("*.mcap"))
         if not mcap_files:
-            print(f"No .mcap file found in {bag_dir}, skipping.")
+            sections.append(f"No .mcap file found in {bag_dir}, skipping.")
             continue
-        print_gap_report(mcap_files[0])
-        print()
+        sections.append(format_gap_report(mcap_files[0]))
+
+    report = "\n\n".join(sections) + "\n"
+    report_path.write_text(report)
+    print(f"Report written to {report_path}")
