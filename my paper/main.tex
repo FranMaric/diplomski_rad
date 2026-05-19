@@ -1,0 +1,95 @@
+\documentclass[times, utf8, diplomski]{fer}
+\usepackage{booktabs}
+
+\begin{document}
+
+\thesisnumber{1472}
+
+\title{Multimodalno učenje manipulacijskih akcija iz vizualnih, jezičnih i taktilnih
+podataka}
+
+\author{Fran Maric}
+
+\maketitle
+
+% Ispis stranice s napomenom o umetanju izvornika rada. Uklonite naredbu \izvornik ako želite izbaciti tu stranicu.
+\izvornik
+
+\zahvala{Najvise se zelim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo zivotnoj podrsci i pomoci. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podrsci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Zelim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih rupa u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez cije podrske ovaj rad ne bi bio moguc. Od njih zelim istaknuti asistenta Peru Drobac, asistenta Brunu Marica i mentora Matka Orsaga.}
+
+\tableofcontents
+
+\chapter{Uvod}
+Podrucje robotike sve vise se oslanja na neuronske mreze. Neuronske mreze su se pokazale kao vrlo efektivne za obradu sliku, ekstrakciju semantickog znacenja iz slika, obradu jezika i slicne primjene. Transformer je nova arhitektura neuronskih mreza koja se pokazala vrlo znacajnom u obradi prirodnog jezika. Takoder je znacajno utjecala na podrucje obrade slike. Ti napretci u zadnjih pet godina su motivirali istrazivace da primjene istu arhitekturu neuronskih mreza na zadatke manipulacije robotskim rukama. U ovom radu cemo pregledati podrucje neuronskih mreza baziranih na transformer arhitekturama koje su ostavile znacajan utjecaj na podrucje robotike. Izradit cemo podatke temeljene na ljudskim demonstracijama i evaluirati neuronsku mrezu treniranu na tim podatcima.
+
+\chapter{Motivacija}
+
+\section{Zadatak}
+moj zadatak je bio da budem jako marljivi uporan
+\section{Hipoteza}
+
+\chapter{Pregled podrucja}
+\section{LLM}
+\section{VLM}
+\section{VLA}
+\subsection{RT2}
+\subsection{OpenVLA}
+\subsection{Gr00t}
+\subsection{Pi0}
+\section{VLA sa silom}
+\subsection{ForceVLA}
+
+\chapter{Postava}
+\section{Senzor sile}
+sirovi podatci su vrlo sumoviti i driftaju, EMA filter
+\section{Kamere}
+web camera, 3D printani mount
+\section{Kalup}
+- 3D printani kako ne bi prezasitio senzor sile
+\section{ROS}
+
+\chapter{Demonstracija}
+sinkronizacija podataka, 30Hz, vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
+
+\chapter{Ucenje}
+\section{Arhitektura mreze}
+\section{Reprezentacija akcije}
+- joint velocity
+- delta EE pose
+- absolute EE pose
+\section{Gradijentni spust}
+
+\chapter{Evaluacija}
+\section{Metrika}
+- sila:
+    - konstantna sila tijekom kontakta?
+    - prosjecna sila manja od thresholda
+    - postotak vremena kada sila prelazi F\_max
+    - glatkoca trajektorije - jerk derivacija akceleracije
+    - konzistentnost brzine
+- generalizcija:
+    - novi kalup
+    - nova orijentacija kalupa?
+    - promjena jezicne upute (poliraj vs brusi vs izgladi vs obradi povrsinu)
+\section{Ablacije}
+- samo Z sila ili sve sile i torqueovi
+
+\chapter{Zaključak}
+
+\bibliography{literatura}
+\bibliographystyle{fer}
+
+\begin{sazetak}
+Sažetak na hrvatskom jeziku.
+
+\kljucnerijeci{VLA, sila, manipulacija}
+\end{sazetak}
+
+\engtitle{Multimodal learning of manipulation actions from visual, linguistic and force data}
+\begin{abstract}
+Abstract.
+
+\keywords{VLA, force, manipulation}
+\end{abstract}
+
+\end{document}
