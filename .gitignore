@@ -4,3 +4,4 @@ log/
 **/*.mcap
 dataset_recorder/bags/*
 dataset_recorder/*.zip
+dataset_recorder/fran__force_vla/
