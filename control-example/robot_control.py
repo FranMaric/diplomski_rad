@@ -103,7 +103,7 @@ class RobotControl:
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
 
-		self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
+		# self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
 
 	def _joint_states_cb(self, msg):
 		self._joint_names = list(msg.name)
@@ -130,14 +130,14 @@ class RobotControl:
 		d = self.get_joint_values_dict()
 		return [d[j] for j in self.ARM_JOINTS]
 
-	def get_ee_pose(self, ee_frame="panda_EE"):
+	def get_frame_pose(self, frame):
 		"""Returns (translation, quaternion_xyzw) in self.frame_id, or (None, None) on TF failure."""
 		try:
 			self._tf_listener.waitForTransform(
-				self.frame_id, ee_frame, rospy.Time(0), rospy.Duration(1.0)
+				self.frame_id, frame, rospy.Time(0), rospy.Duration(1.0)
 			)
 			translation, quaternion = self._tf_listener.lookupTransform(
-				self.frame_id, ee_frame, rospy.Time(0)
+				self.frame_id, frame, rospy.Time(0)
 			)
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
 			rospy.logwarn(f"TF lookup failed: {e}")
@@ -147,7 +147,7 @@ class RobotControl:
 
 	def move_to(self, pose):
 		"""
-		Publish once a target end-effector pose.
+		Publish once a target end-effector pose. Expects a TCP pose defined in panda_link0 frame.
 
 		Args:
 			pose (geometry_msgs.msg.Pose): Target pose in self.frame_id.
@@ -157,10 +157,21 @@ class RobotControl:
 
 		msg = PoseStamped()
 		msg.header.stamp = rospy.Time.now()
-		msg.header.frame_id = self.frame_id
+		msg.header.frame_id = "panda_link0"  
 		msg.pose = pose
 
 		self._pose_pub.publish(msg)
+
+	def move_tcp_in_kalup_frame(self, pose_in_kalup_frame: PoseStamped):
+		try:
+			self._tf_listener.waitForTransform(
+				"panda_link0", "kalup", rospy.Time(0), rospy.Duration(1.0)
+			)
+			pose_in_link0 = self._tf_listener.transformPose("panda_link0", pose_in_kalup_frame)
+		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+			rospy.logwarn(f"TF transform failed: {e}")
+			return
+		self.move_to(pose_in_link0.pose)
 
 	def gripper_open(self, width=0.07, speed=0.2):
 		"""
@@ -239,7 +250,7 @@ class RobotControl:
 
 		for i in range(REPLAN_STEPS):
 			action = action_chunk[i]
-			ee_translation, ee_quat = self.get_ee_pose()
+			ee_translation, ee_quat = self.get_frame_pose(frame="panda_EE")
 			if ee_translation is None or ee_quat is None:
 				rospy.logwarn("Skipping action execution due to missing TF data.")
 				continue
@@ -353,39 +364,59 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 		return observation
 	else:
 		raise ValueError(f"Unsupported env: {env}")
+	
 
-def publish_dremel_transform():
-    broadcaster = tf2_ros.StaticTransformBroadcaster()
-    t = TransformStamped()
+def publish_kalup_transform(tcp_pose):
+	broadcaster = tf2_ros.StaticTransformBroadcaster()
+	t = TransformStamped()
 
-    t.header.stamp = rospy.Time.now()
-    t.header.frame_id = "panda_EE"      # ili "panda_link8" cini se da su identicni
-    t.child_frame_id = "tcp"
+	t.header.stamp = rospy.Time.now()
+	t.header.frame_id = "panda_link0"
+	t.child_frame_id = "kalup"
 
-    x_move_in_local_frame = 0.19
-    z_move_in_local_frame = 0.113
+	# Translation (meters) - measure from robot base to kalup center
+	t.transform.translation.x = tcp_pose.position.x
+	t.transform.translation.y = tcp_pose.position.y
+	t.transform.translation.z = tcp_pose.position.z
 
-    # Translation (meters) - measure from flange center to dremel tip
-    t.transform.translation.x = np.sin(np.pi / 4) * x_move_in_local_frame
-    t.transform.translation.y = -np.sin(np.pi / 4) * x_move_in_local_frame
-    t.transform.translation.z = z_move_in_local_frame
+	rpy = [0, 0, np.pi / 2]
+	quat = tf.transformations.quaternion_from_euler(*rpy) 
 
-    rpy = [np.pi, 0, -np.pi * 3 / 4]
-    quat = tf.transformations.quaternion_from_euler(*rpy) 
+	t.transform.rotation.x = quat[0]
+	t.transform.rotation.y = quat[1]
+	t.transform.rotation.z = quat[2]
+	t.transform.rotation.w = quat[3]
 
-    t.transform.rotation.x = quat[0]
-    t.transform.rotation.y = quat[1]
-    t.transform.rotation.z = quat[2]
-    t.transform.rotation.w = quat[3]
+	broadcaster.sendTransform(t)
 
-    broadcaster.sendTransform(t)
-    rospy.spin()
 
 def main():
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
 
+	trans, quats = robot_controller.get_frame_pose(frame='tcp')
+	tcp_pose = _build_pose(trans[0], trans[1], trans[2], quats[0], quats[1], quats[2], quats[3])
+
+	publish_kalup_transform(tcp_pose)
+
+	rospy.loginfo(f"Publishing tcp transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='tcp')}")
+
+	pose_in_kalup_frame = PoseStamped()
+	pose_in_kalup_frame.header.stamp = rospy.Time.now()
+	pose_in_kalup_frame.header.frame_id = "kalup"
+	pose_in_kalup_frame.pose.position.x = 0
+	pose_in_kalup_frame.pose.position.y = 0
+	pose_in_kalup_frame.pose.position.z = 0
+	pose_in_kalup_frame.pose.orientation.x = 0
+	pose_in_kalup_frame.pose.orientation.y = 0
+	pose_in_kalup_frame.pose.orientation.z = 0
+	pose_in_kalup_frame.pose.orientation.w = 1
+
+	# while True:
+	robot_controller.move_tcp_in_kalup_frame(pose_in_kalup_frame)
+
+	rospy.spin()
 	# robot_controller.gripper_open()
 
 	# ee_pose = _build_pose(0.5521804078001702, 0.03545474781469954, 0.6770280167101107, -0.9910179470831783, 0.014436862832127084, -0.1317547604250494, -0.017608223402260894)
@@ -397,8 +428,8 @@ def main():
 	
 	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
-	rospy.loginfo("RobotControl node connected to policy server.")
-	rospy.loginfo(f"Current EE pose: {robot_controller.get_ee_pose()}")
+	print("RobotControl node connected to policy server.")
+	print(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
 	iteration = 0
 	try:
