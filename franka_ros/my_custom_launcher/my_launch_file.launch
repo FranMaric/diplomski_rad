@@ -37,7 +37,15 @@
         type="spawner"
         respawn="false"
         output="screen"
-        args="position_joint_trajectory_controller"/> <!-- cartesian_impedance_example_controller / position_joint_trajectory_controller -->
+        args="cartesian_impedance_example_controller"/> <!-- cartesian_impedance_example_controller / position_joint_trajectory_controller -->
+
+  <!-- TCP static transform: panda_link8 → tcp (flange to dremel tip) -->
+  <!-- Translation and rotation computed from publish_tcp_transform() in robot_control.py -->
+  <!-- tx=sin(pi/4)*0.19, ty=-sin(pi/4)*0.19, tz=0.113 | rpy=[pi, 0, -3*pi/4] -->
+  <node pkg="tf2_ros"
+        type="static_transform_publisher"
+        name="tcp_transform_publisher"
+        args="0.13435 -0.13435 0.113  0.382683 -0.923880 0.0 0.0  panda_link8 tcp"/>
 
   <node pkg="rviz"
         type="rviz"
