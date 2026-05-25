@@ -12,7 +12,8 @@ MODEL_PROMPT = "pick up the white block from the blue plate"
 
 import rospy
 import tf
-from geometry_msgs.msg import Pose, PoseStamped
+import tf2_ros
+from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
@@ -352,6 +353,33 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 		return observation
 	else:
 		raise ValueError(f"Unsupported env: {env}")
+
+def publish_dremel_transform():
+    broadcaster = tf2_ros.StaticTransformBroadcaster()
+    t = TransformStamped()
+
+    t.header.stamp = rospy.Time.now()
+    t.header.frame_id = "panda_EE"      # ili "panda_link8" cini se da su identicni
+    t.child_frame_id = "tcp"
+
+    x_move_in_local_frame = 0.19
+    z_move_in_local_frame = 0.113
+
+    # Translation (meters) - measure from flange center to dremel tip
+    t.transform.translation.x = np.sin(np.pi / 4) * x_move_in_local_frame
+    t.transform.translation.y = -np.sin(np.pi / 4) * x_move_in_local_frame
+    t.transform.translation.z = z_move_in_local_frame
+
+    rpy = [np.pi, 0, -np.pi * 3 / 4]
+    quat = tf.transformations.quaternion_from_euler(*rpy) 
+
+    t.transform.rotation.x = quat[0]
+    t.transform.rotation.y = quat[1]
+    t.transform.rotation.z = quat[2]
+    t.transform.rotation.w = quat[3]
+
+    broadcaster.sendTransform(t)
+    rospy.spin()
 
 def main():
 	rospy.loginfo("RobotControl node init.")
