@@ -2,7 +2,7 @@
 import rospy
 from franka_msgs.srv import SetLoad, SetLoadRequest, SetEEFrame, SetEEFrameRequest
 
-MASS    = 0.4                         # kg
+MASS    = 0.5                         # kg
 COM     = [0.06717, -0.06717, 0.06]   # CoM from panda_link8 (flange) [m]
 INERTIA = [0.001, 0, 0,
            0, 0.001, 0,
