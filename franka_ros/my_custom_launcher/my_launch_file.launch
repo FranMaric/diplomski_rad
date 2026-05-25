@@ -50,6 +50,8 @@
         name="tcp_transform_publisher"
         args="0.13435 -0.13435 0.113  0.382683 -0.923880 0.0 0.0  panda_link8 tcp"/>
 
+  <node name="set_compliance_params" pkg="my_custom_launcher" type="set_compliance_params.py" output="screen"/>
+
   <node pkg="rviz"
         type="rviz"
         output="screen"
