@@ -9,7 +9,7 @@
                       joint_limits="${xacro.load_yaml('$(find franka_description)/robots/panda/joint_limits.yaml')}">
   </xacro:franka_robot>
 
-  <link name="ee_camera_link">
+  <!-- <link name="ee_camera_link">
     <inertial>
       <mass value="0.1"/>
       <origin xyz="0 0 0"/>
@@ -99,5 +99,5 @@
       <frameName>scene_camera_link</frameName>
     </plugin>
   </sensor>
-  </gazebo>
+  </gazebo> -->
 </robot>
