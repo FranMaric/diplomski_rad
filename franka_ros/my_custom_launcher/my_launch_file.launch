@@ -20,6 +20,9 @@
             pass_all_args="true"
             unless="$(arg sim)"/>
 
+    <!-- Set end effector payload for gravity/Coriolis compensation and for EE frame use TCP frame-->
+  <node name="set_ee_load" pkg="my_custom_launcher" type="set_ee_load.py"/>
+
   <!-- REAL ROBOT controllers -->
   <rosparam command="load"
       file="$(find franka_example_controllers)/config/franka_example_controllers.yaml"
