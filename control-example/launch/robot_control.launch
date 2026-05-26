@@ -6,6 +6,24 @@
     <arg name="scaling_file" value="/catkin_ws/src/optoforce/config/single_channel_6_axis_generic_scale.yaml"/>
   </include>
 
+  <node name="ee_camera" pkg="usb_cam" type="usb_cam_node" output="screen">
+    <param name="video_device"  value="/dev/video2"/>
+    <param name="camera_name"   value="ee_camera"/>
+    <param name="image_width"   value="640"/>
+    <param name="image_height"  value="480"/>
+    <param name="pixel_format"  value="yuyv"/>
+    <remap from="usb_cam/image_raw" to="/ee_camera/image_raw"/>
+  </node>
+
+  <node name="scene_camera" pkg="usb_cam" type="usb_cam_node" output="screen">
+    <param name="video_device"  value="/dev/video0"/>
+    <param name="camera_name"   value="scene_camera"/>
+    <param name="image_width"   value="640"/>
+    <param name="image_height"  value="480"/>
+    <param name="pixel_format"  value="yuyv"/> 
+    <remap from="usb_cam/image_raw" to="/scene_camera/image_raw"/>
+  </node>
+
   <node name="robot_control" pkg="robot_control_pkg" type="robot_control.py"
         output="screen" required="true"/>
 </launch>

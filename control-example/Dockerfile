@@ -8,6 +8,7 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	ros-noetic-catkin \
 	ros-noetic-franka-gripper \
+	ros-noetic-usb-cam \
 	python3-pip \
 	&& rm -rf /var/lib/apt/lists/*
 
