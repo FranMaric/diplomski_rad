@@ -97,8 +97,10 @@ class RobotControl:
 			'/optoforce_0', WrenchStamped, self._force_cb, queue_size=10
 		)
 
-		# Give publishers a short moment to register with ROS master/subscribers.
-		rospy.sleep(0.5)
+		rospy.loginfo("Waiting for initial force reading...")
+		while not rospy.is_shutdown() and self._latest_force is None:
+			rospy.sleep(0.1)
+		rospy.loginfo("Received force reading.")
 
 		# self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
 
@@ -132,7 +134,7 @@ class RobotControl:
 		return [d[j] for j in self.ARM_JOINTS]
 
 	def get_ee_pose(self):
-		return self.get_frame_pose(frame='tcp')
+		return self.get_frame_pose(frame='panda_EE')
 
 	def get_frame_pose(self, frame):
 		"""Returns (translation, quaternion_xyzw) in self.frame_id, or (None, None) on TF failure."""
@@ -186,7 +188,7 @@ class RobotControl:
 		while not rospy.is_shutdown():
 			self.move_to(pose)
 
-			actual_pos, actual_quat = self.get_frame_pose(frame='tcp')
+			actual_pos, actual_quat = self.get_frame_pose(frame='panda_EE')
 			if actual_pos is not None and actual_quat is not None:
 				pos_err = float(np.linalg.norm(np.array(actual_pos) - target_pos))
 				dot = float(abs(np.dot(np.array(actual_quat), target_quat)))
@@ -281,6 +283,9 @@ class RobotControl:
 		if self._latest_scene_image is None:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="rgb8")
+
+	def get_latest_wrench(self):
+		return self._latest_force
 	
 	def execute_cartesian_action_chunk(self, action_chunk):
 		rate = rospy.Rate(ACTION_RATE)
@@ -352,25 +357,7 @@ class RobotControl:
 
 		for i in range(REPLAN_STEPS):
 			action = action_chunk[i]
-			ee_translation, ee_quat = self.get_frame_pose(frame="tcp")
-			if ee_translation is None or ee_quat is None:
-				rospy.logwarn("Skipping action execution due to missing TF data.")
-				continue
 
-			# Apply deltas from action to current EE pose.
-			# action[0:3] are NORMALIZED [-1,1]; scale to meters (robosuite OSC default 0.05).
-			# action[3:6] are axis-angle deltas in radians; compose via quaternion multiplication.
-			ee_translation = np.array(ee_translation) + np.array(action[0:3]) * 0.05
-
-			delta_rot = np.array(action[3:6], dtype=np.float64)
-			angle = float(np.linalg.norm(delta_rot))
-			if angle > 1e-8:
-				axis = delta_rot / angle
-				dq = tf.transformations.quaternion_about_axis(angle, axis)  # xyzw
-				new_quat = tf.transformations.quaternion_multiply(dq, np.array(ee_quat))
-				new_quat = new_quat / np.linalg.norm(new_quat)
-			else:
-				new_quat = np.array(ee_quat)
 
 			# Convert to Pose message and publish.
 			pose = Pose()
@@ -382,9 +369,6 @@ class RobotControl:
 			pose.orientation.z = new_quat[2]
 			pose.orientation.w = new_quat[3]
 			self.move_to(pose)
-
-			# Gripper: absolute command in action[6], edge-triggered.
-			self.apply_gripper_action(float(action[6]))
 
 			rate.sleep()
 
@@ -400,7 +384,7 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 	pose.orientation.w = float(ow)
 	return pose
 
-def build_observation(env="pi05_libero", prompt="pick up the white block from the blue plate.", robot_controller=None):
+def build_observation(env, prompt, robot_controller):
 	wrist_img = image_tools.convert_to_uint8(
 		image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
 	)
@@ -441,7 +425,7 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 		}
 		return observation
 	elif env == "force_vla":
-		print(f"Force: {robot_controller.optoforce_node.get_latest_wrench()}")
+		print(f"Force: {robot_controller.get_latest_wrench()}")
 		if robot_controller._latest_force is None:
 			print("No force info available.")
 			return None
@@ -496,17 +480,14 @@ def publish_kalup_transform(tcp_pose):
 
 
 def main():
-	T_kalup_to_panda_link0 = (0.282, 0, 0.51)
+	T_kalup_to_panda_link0 = _build_pose(0.6278923480377212, 0.11609916503189038, 0.5572498470616427, 0.006199244926552829, 0.0409889375821213, -0.7392550906239816, -0.6721484721516245)
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
 
-	trans, quats = robot_controller.get_frame_pose(frame='tcp')
-	tcp_pose = _build_pose(trans[0], trans[1], trans[2], quats[0], quats[1], quats[2], quats[3])
+	publish_kalup_transform(T_kalup_to_panda_link0)
 
-	publish_kalup_transform(tcp_pose)
-
-	rospy.loginfo(f"Publishing tcp transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='tcp')}")
+	rospy.loginfo(f"Publishing tcp transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
 	pose_in_kalup_frame = PoseStamped()
 	pose_in_kalup_frame.header.stamp = rospy.Time.now()
@@ -532,7 +513,7 @@ def main():
 
 	print("RobotControl node connecting to policy server.")
 	
-	# policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
+	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
 	print("RobotControl node connected to policy server.")
 	print(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
@@ -544,11 +525,13 @@ def main():
 			if observation is None:
 				rospy.sleep(0.1)
 				continue
-			# action_chunk = policy_client.infer(observation)["actions"]
+			action_chunk = policy_client.infer(observation)["actions"]
 
-			# print(action_chunk)
+			print(action_chunk)
 
-			if CONTROLLER_TYPE == "cartesian_impedance":
+			if CONTROLLER_TYPE == "cartesian_impedance" and MODEL_ENV == "force_vla":
+				robot_controller.execute_tcp_action_chunk(action_chunk)
+			elif CONTROLLER_TYPE == "cartesian_impedance":
 				robot_controller.execute_cartesian_action_chunk(action_chunk)
 			elif CONTROLLER_TYPE == "joint_velocity":
 				robot_controller.execute_joint_velocity_action_chunk(action_chunk)

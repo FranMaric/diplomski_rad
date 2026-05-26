@@ -26,7 +26,7 @@ class OptoforceNode(object):
     ROS interface for Optoforce sensors
     """
 
-    CALIBRATION_SAMPLES = 500
+    CALIBRATION_SAMPLES = 200
 
     def __init__(self):
         """
