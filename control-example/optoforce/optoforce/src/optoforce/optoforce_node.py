@@ -26,6 +26,8 @@ class OptoforceNode(object):
     ROS interface for Optoforce sensors
     """
 
+    CALIBRATION_SAMPLES = 500
+
     def __init__(self):
         """
         Initialize OptoforceDriver object
@@ -60,6 +62,9 @@ class OptoforceNode(object):
             wrench.header.frame_id = topic_basename + str(starting_index + i)
             self._wrenches.append(wrench)
 
+        self._bias = None
+        self._calibration_samples = []
+
     def config(self):
         """
         Set the sensor's configuration based on parameters.
@@ -79,26 +84,54 @@ class OptoforceNode(object):
         Runs the read loop.
 
         It listens to the serial port and publishes all force data it receives.
+        Collects CALIBRATION_SAMPLES readings at startup to compute a bias
+        offset that is subtracted from every subsequent measurement.
         """
         rospy.loginfo("Starting to listen to the sensor")
+        rospy.loginfo("Collecting %d samples for bias calibration...",
+                      self.CALIBRATION_SAMPLES)
         while not rospy.is_shutdown():
             data = self._driver.read()
             if isinstance(data, optoforce.OptoforceData):
-                self._publish(data)
+                if self._bias is None:
+                    self._calibration_samples.append(data)
+                    if len(self._calibration_samples) >= self.CALIBRATION_SAMPLES:
+                        self._compute_bias()
+                else:
+                    self._publish(data)
             elif isinstance(data, optoforce.OptoforceSerialNumber):
                 rospy.loginfo("The sensor's serial number is " + str(data))
 
+    def _compute_bias(self):
+        n = len(self._calibration_samples)
+        nb_sensors = self._driver.nb_sensors()
+        nb_axis = self._driver.nb_axis()
+        self._bias = [
+            [sum(s.force[i][j] for s in self._calibration_samples) / n
+             for j in range(nb_axis)]
+            for i in range(nb_sensors)
+        ]
+        for i in range(nb_sensors):
+            axes = ["fx", "fy", "fz", "tx", "ty", "tz"]
+            bias_str = "  ".join(
+                "%s:%.4f" % (axes[j], self._bias[i][j]) for j in range(nb_axis)
+            )
+            rospy.loginfo("Sensor %d bias — %s", i, bias_str)
+        rospy.loginfo("Bias calibration complete. Starting to publish.")
+        self._calibration_samples = []
+
     def _publish(self, data):
         stamp = rospy.Time.now()
+        bias = self._bias
         for i in range(self._driver.nb_sensors()):
             self._wrenches[i].header.stamp = stamp
-            self._wrenches[i].wrench.force.x = data.force[i][0]
-            self._wrenches[i].wrench.force.y = data.force[i][1]
-            self._wrenches[i].wrench.force.z = data.force[i][2]
+            self._wrenches[i].wrench.force.x = data.force[i][0] - bias[i][0]
+            self._wrenches[i].wrench.force.y = data.force[i][1] - bias[i][1]
+            self._wrenches[i].wrench.force.z = data.force[i][2] - bias[i][2]
             if self._driver.nb_axis() == 6:
-                self._wrenches[i].wrench.torque.x = data.force[i][3]
-                self._wrenches[i].wrench.torque.y = data.force[i][4]
-                self._wrenches[i].wrench.torque.z = data.force[i][5]
+                self._wrenches[i].wrench.torque.x = data.force[i][3] - bias[i][3]
+                self._wrenches[i].wrench.torque.y = data.force[i][4] - bias[i][4]
+                self._wrenches[i].wrench.torque.z = data.force[i][5] - bias[i][5]
             self._publishers[i].publish(self._wrenches[i])
 
 class ConnectPythonLoggingToROS(logging.Handler):
