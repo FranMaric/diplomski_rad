@@ -25,6 +25,10 @@ cartesian_pose_example_controller:
     type: franka_example_controllers/CartesianPoseExampleController
     arm_id: $(arg arm_id)
 
+cartesian_pose_controller:
+    type: franka_example_controllers/CartesianPoseController
+    arm_id: $(arg arm_id)
+
 elbow_example_controller:
     type: franka_example_controllers/ElbowExampleController
     arm_id: $(arg arm_id)

@@ -42,7 +42,7 @@ class RobotControl:
 	def __init__(
 		self,
 		frame_id="panda_link0",
-		pose_topic="/cartesian_impedance_example_controller/equilibrium_pose",
+		pose_topic="/cartesian_pose_controller/equilibrium_pose",
 		gripper_move_topic="/franka_gripper/move/goal",
 		gripper_grasp_topic="/franka_gripper/grasp/goal",
 		joint_states_topic="/joint_states",
