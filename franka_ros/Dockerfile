@@ -37,4 +37,4 @@ CMD bash -c "ulimit -r 99 && ulimit -l unlimited && \
              roslaunch my_custom_launcher \
              my_launch_file.launch \
              robot_ip:=172.16.0.2 \
-             sim:=true"
+             sim:=false"
