@@ -25,10 +25,16 @@ COPY *.py /catkin_ws/src/robot_control_pkg/scripts/
 
 RUN chmod +x /catkin_ws/src/robot_control_pkg/scripts/*.py
 
+# Copy optoforce catkin package (the inner directory is the actual catkin package)
+COPY ./optoforce/optoforce /catkin_ws/src/optoforce
+
 WORKDIR /catkin_ws
 
 RUN source /opt/ros/noetic/setup.bash && catkin_make
 
-RUN pip3 install typing_extensions
+RUN pip3 install typing_extensions pyserial
 
-CMD ["bash", "-lc", "source /opt/ros/noetic/setup.bash && source /catkin_ws/devel/setup.bash && rosrun robot_control_pkg robot_control.py"]
+RUN mkdir -p /catkin_ws/src/robot_control_pkg/launch
+COPY ./launch/robot_control.launch /catkin_ws/src/robot_control_pkg/launch/
+
+CMD ["bash", "-c", "source /opt/ros/noetic/setup.bash && source /catkin_ws/devel/setup.bash && roslaunch robot_control_pkg robot_control.launch"]

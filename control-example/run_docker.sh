@@ -5,4 +5,5 @@ docker run -it --init \
   --network host \
   --device /dev/video0 \
   --device /dev/video2 \
+  --device /dev/ttyACM0 \
   control-example:latest

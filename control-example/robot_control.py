@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-USE_REAL_CAMERAS = False  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
-ACTION_RATE = 15.0  # Hz
-REPLAN_STEPS = 5 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+USE_REAL_CAMERAS = True  # True = USB webcams via WebCamera; False = ROS image topics from Gazebo
+ACTION_RATE = 30.0  # Hz
+REPLAN_STEPS = 10 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
 POLICY_SERVER_HOST = "161.53.68.175" # steffy
-MODEL_ENV = "pi05_droid" # "pi05_libero" or "pi05_droid"
-CONTROLLER_TYPE = "joint_velocity" # "cartesian_impedance" or "joint_velocity"
+MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
+CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
 VELOCITY_SCALING = 0.2
 
-MODEL_PROMPT = "pick up the white block from the blue plate"
+MODEL_PROMPT = "sand the mold"
 
 import rospy
 import tf
@@ -100,10 +100,19 @@ class RobotControl:
 
 		self._tf_listener = tf.TransformListener()
 
+		self._latest_force = None
+		self._force_sub = rospy.Subscriber(
+			'/optoforce_0', WrenchStamped, self._force_cb, queue_size=10
+		)
+
 		# Give publishers a short moment to register with ROS master/subscribers.
 		rospy.sleep(0.5)
 
 		# self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
+
+	def _force_cb(self, msg):
+		msg.wrench.force.z = -msg.wrench.force.z
+		self._latest_force = msg
 
 	def _joint_states_cb(self, msg):
 		self._joint_names = list(msg.name)
@@ -129,6 +138,9 @@ class RobotControl:
 		"""
 		d = self.get_joint_values_dict()
 		return [d[j] for j in self.ARM_JOINTS]
+
+	def get_ee_pose(self):
+		return self.get_frame_pose(frame='tcp')
 
 	def get_frame_pose(self, frame):
 		"""Returns (translation, quaternion_xyzw) in self.frame_id, or (None, None) on TF failure."""
@@ -162,6 +174,43 @@ class RobotControl:
 
 		self._pose_pub.publish(msg)
 
+	def move_to_blocking(self, pose, pos_tol=0.005, ori_tol=0.05, timeout=15.0):
+		"""
+		Publish target pose repeatedly and block until the TCP has settled within tolerance.
+
+		pos_tol: position tolerance in meters (default 5 mm)
+		ori_tol: orientation tolerance in radians (default ~3 deg)
+		Returns True if converged, False if timed out.
+		"""
+		target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
+		target_quat = np.array([pose.orientation.x, pose.orientation.y,
+		                        pose.orientation.z, pose.orientation.w])
+
+		rate = rospy.Rate(self.pose_publish_rate_hz)
+		deadline = rospy.Time.now() + rospy.Duration(timeout)
+		pos_err = float('inf')
+		ori_err = float('inf')
+
+		while not rospy.is_shutdown():
+			self.move_to(pose)
+
+			actual_pos, actual_quat = self.get_frame_pose(frame='tcp')
+			if actual_pos is not None and actual_quat is not None:
+				pos_err = float(np.linalg.norm(np.array(actual_pos) - target_pos))
+				dot = float(abs(np.dot(np.array(actual_quat), target_quat)))
+				ori_err = 2.0 * float(np.arccos(min(1.0, dot)))
+				if pos_err < pos_tol and ori_err < ori_tol:
+					return True
+
+			if rospy.Time.now() > deadline:
+				rospy.logwarn(
+					f"move_to_blocking timed out — pos_err={pos_err*1000:.1f}mm, "
+					f"ori_err={np.degrees(ori_err):.2f}deg"
+				)
+				return False
+
+			rate.sleep()
+
 	def move_tcp_in_kalup_frame(self, pose_in_kalup_frame: PoseStamped):
 		try:
 			self._tf_listener.waitForTransform(
@@ -171,7 +220,7 @@ class RobotControl:
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
 			rospy.logwarn(f"TF transform failed: {e}")
 			return
-		self.move_to(pose_in_link0.pose)
+		self.move_to_blocking(pose_in_link0.pose)
 
 	def gripper_open(self, width=0.07, speed=0.2):
 		"""
@@ -233,14 +282,14 @@ class RobotControl:
 
 	def get_latest_ee_image(self):
 		if USE_REAL_CAMERAS:
-			return self._camera.get_image(0)
+			return self._camera.get_image(1)
 		if self._latest_ee_image is None:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_ee_image, desired_encoding="rgb8")
 
 	def get_latest_scene_image(self):
 		if USE_REAL_CAMERAS:
-			return self._camera.get_image(1)
+			return self._camera.get_image(0)
 		if self._latest_scene_image is None:
 			return None
 		return self._cv_bridge.imgmsg_to_cv2(self._latest_scene_image, desired_encoding="rgb8")
@@ -309,6 +358,47 @@ class RobotControl:
 				self._gripper_state = desired
 				rospy.loginfo(f"Gripper -> {desired} (action[7]={action[7]:+.3f})")
 			rate.sleep()
+	
+	def execute_tcp_action_chunk(self, action_chunk):
+		rate = rospy.Rate(ACTION_RATE)
+
+		for i in range(REPLAN_STEPS):
+			action = action_chunk[i]
+			ee_translation, ee_quat = self.get_frame_pose(frame="tcp")
+			if ee_translation is None or ee_quat is None:
+				rospy.logwarn("Skipping action execution due to missing TF data.")
+				continue
+
+			# Apply deltas from action to current EE pose.
+			# action[0:3] are NORMALIZED [-1,1]; scale to meters (robosuite OSC default 0.05).
+			# action[3:6] are axis-angle deltas in radians; compose via quaternion multiplication.
+			ee_translation = np.array(ee_translation) + np.array(action[0:3]) * 0.05
+
+			delta_rot = np.array(action[3:6], dtype=np.float64)
+			angle = float(np.linalg.norm(delta_rot))
+			if angle > 1e-8:
+				axis = delta_rot / angle
+				dq = tf.transformations.quaternion_about_axis(angle, axis)  # xyzw
+				new_quat = tf.transformations.quaternion_multiply(dq, np.array(ee_quat))
+				new_quat = new_quat / np.linalg.norm(new_quat)
+			else:
+				new_quat = np.array(ee_quat)
+
+			# Convert to Pose message and publish.
+			pose = Pose()
+			pose.position.x = ee_translation[0]
+			pose.position.y = ee_translation[1]
+			pose.position.z = ee_translation[2]
+			pose.orientation.x = new_quat[0]
+			pose.orientation.y = new_quat[1]
+			pose.orientation.z = new_quat[2]
+			pose.orientation.w = new_quat[3]
+			self.move_to(pose)
+
+			# Gripper: absolute command in action[6], edge-triggered.
+			self.apply_gripper_action(float(action[6]))
+
+			rate.sleep()
 
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
@@ -362,6 +452,33 @@ def build_observation(env="pi05_libero", prompt="pick up the white block from th
 			"prompt": prompt,
 		}
 		return observation
+	elif env == "force_vla":
+		print(f"Force: {robot_controller.optoforce_node.get_latest_wrench()}")
+		if robot_controller._latest_force is None:
+			print("No force info available.")
+			return None
+		ee_pos, ee_quat = robot_controller.get_ee_pose()
+		ee_axis_angle = _quat_to_axis_angle(ee_quat)
+
+		print(f"Current TCP: {ee_pos} & {ee_axis_angle}")
+
+		wrench = robot_controller._latest_force.wrench
+		force = np.array([wrench.force.x, wrench.force.y, wrench.force.z, wrench.torque.x, wrench.torque.y, wrench.torque.z], dtype=np.float32)
+
+		state = np.concatenate([
+			ee_pos,           				# idx 0,1,2  (m)
+			ee_axis_angle,           		# idx 3,4,5  (rad, axis-angle)
+			[0],			# gripper placeholder (no gripper)
+			force
+		]).astype(np.float32)
+
+		observation = {
+			"observation/image": scene_img,
+			"observation/wrist_image": wrist_img,
+			"observation/state": state,
+			"prompt": prompt,
+		}
+		return observation
 	else:
 		raise ValueError(f"Unsupported env: {env}")
 	
@@ -391,6 +508,7 @@ def publish_kalup_transform(tcp_pose):
 
 
 def main():
+	T_kalup_to_panda_link0 = (0.282, 0, 0.51)
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
@@ -424,9 +542,9 @@ def main():
 	# robot_controller.move_to(ee_pose)
 	# return
 
-	rospy.loginfo("RobotControl node connecting to policy server.")
+	print("RobotControl node connecting to policy server.")
 	
-	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
+	# policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
 	print("RobotControl node connected to policy server.")
 	print(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
@@ -435,8 +553,10 @@ def main():
 	try:
 		while not rospy.is_shutdown():
 			observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
-
-			action_chunk = policy_client.infer(observation)["actions"]
+			if observation is None:
+				rospy.sleep(0.1)
+				continue
+			# action_chunk = policy_client.infer(observation)["actions"]
 
 			# print(action_chunk)
 

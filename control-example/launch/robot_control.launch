@@ -1,0 +1,11 @@
+<launch>
+  <include file="$(find optoforce)/launch/optoforce.launch">
+    <arg name="port"         value="/dev/ttyACM0"/>
+    <arg name="type"         value="s-ch/6-axis"/>
+    <arg name="zero"         value="true"/>
+    <arg name="scaling_file" value="/catkin_ws/src/optoforce/config/single_channel_6_axis_generic_scale.yaml"/>
+  </include>
+
+  <node name="robot_control" pkg="robot_control_pkg" type="robot_control.py"
+        output="screen" required="true"/>
+</launch>

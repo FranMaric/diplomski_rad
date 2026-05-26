@@ -1,0 +1,2 @@
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml
+ros2 launch optoforce_wrapper optoforce_read.launch.py
