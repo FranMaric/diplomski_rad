@@ -9,7 +9,8 @@ VELOCITY_SCALING = 0.2
 
 MODEL_PROMPT = "sand the mold"
 
-import rospy
+import rospy, math
+import csv, io
 import tf
 import tf2_ros
 from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped
@@ -35,6 +36,17 @@ def _quat_to_axis_angle(q_xyzw):
 	axis = np.array([x, y, z], dtype=np.float64) / sin_half
 	return axis * angle
 
+
+def _quat_to_euler(qx, qy, qz, qw):
+    sinr_cosp = 2.0 * (qw * qx + qy * qz)
+    cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+    sinp = 2.0 * (qw * qy - qz * qx)
+    pitch = math.copysign(math.pi / 2, sinp) if abs(sinp) >= 1 else math.asin(sinp)
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return roll, pitch, yaw
 
 class RobotControl:
 	"""ROS1 (Noetic) helper for controlling Franka pose and gripper."""
@@ -214,7 +226,7 @@ class RobotControl:
 		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
 			rospy.logwarn(f"TF transform failed: {e}")
 			return
-		self.move_to_blocking(pose_in_link0.pose)
+		self.move_to(pose_in_link0.pose)
 
 	def gripper_open(self, width=0.07, speed=0.2):
 		"""
@@ -385,11 +397,16 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 	return pose
 
 def build_observation(env, prompt, robot_controller):
+	raw_ee = robot_controller.get_latest_ee_image()
+	raw_scene = robot_controller.get_latest_scene_image()
+	if raw_ee is None or raw_scene is None:
+		rospy.logwarn_throttle(5.0, "Waiting for camera frames...")
+		return None
 	wrist_img = image_tools.convert_to_uint8(
-		image_tools.resize_with_pad(robot_controller.get_latest_ee_image(), 224, 224)
+		image_tools.resize_with_pad(raw_ee, 224, 224)
 	)
 	scene_img = image_tools.convert_to_uint8(
-		image_tools.resize_with_pad(robot_controller.get_latest_scene_image(), 224, 224)
+		image_tools.resize_with_pad(raw_scene, 224, 224)
 	)
 	if env == "pi05_libero": # requires ee cartesian controller
 		ee_pos, ee_quat = robot_controller.get_ee_pose()
@@ -425,29 +442,40 @@ def build_observation(env, prompt, robot_controller):
 		}
 		return observation
 	elif env == "force_vla":
-		print(f"Force: {robot_controller.get_latest_wrench()}")
+		rospy.loginfo(f"Force: {robot_controller._latest_force}")
 		if robot_controller._latest_force is None:
-			print("No force info available.")
+			rospy.logwarn("No force info available.")
 			return None
-		ee_pos, ee_quat = robot_controller.get_ee_pose()
-		ee_axis_angle = _quat_to_axis_angle(ee_quat)
+		try:
+			robot_controller._tf_listener.waitForTransform(
+				"kalup", "panda_EE", rospy.Time(0), rospy.Duration(1.0)
+			)
+			ee_pos, ee_quat = robot_controller._tf_listener.lookupTransform(
+				"kalup", "panda_EE", rospy.Time(0)
+			)
+		except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+			rospy.logwarn(f"TF lookup kalup->panda_EE failed: {e}")
+			return None
+		ee_pos = np.array(ee_pos, dtype=np.float32)
 
-		print(f"Current TCP: {ee_pos} & {ee_axis_angle}")
+		ee_euler_angle = _quat_to_euler(ee_quat[0], ee_quat[1], ee_quat[2], ee_quat[3])
+
+		rospy.loginfo(f"Current EE pose in kalup frame: {ee_pos} & {ee_euler_angle}")
 
 		wrench = robot_controller._latest_force.wrench
 		force = np.array([wrench.force.x, wrench.force.y, wrench.force.z, wrench.torque.x, wrench.torque.y, wrench.torque.z], dtype=np.float32)
 
 		state = np.concatenate([
 			ee_pos,           				# idx 0,1,2  (m)
-			ee_axis_angle,           		# idx 3,4,5  (rad, axis-angle)
+			ee_euler_angle,           		# idx 3,4,5  (rad, axis-angle)
 			[0],			# gripper placeholder (no gripper)
 			force
 		]).astype(np.float32)
 
 		observation = {
-			"observation/image": scene_img,
-			"observation/wrist_image": wrist_img,
-			"observation/state": state,
+			"image": scene_img,
+			"wrist_image": wrist_img,
+			"state": state,
 			"prompt": prompt,
 		}
 		return observation
@@ -480,14 +508,14 @@ def publish_kalup_transform(tcp_pose):
 
 
 def main():
-	T_kalup_to_panda_link0 = _build_pose(0.6278923480377212, 0.11609916503189038, 0.5572498470616427, 0.006199244926552829, 0.0409889375821213, -0.7392550906239816, -0.6721484721516245)
+	T_kalup_to_panda_link0 = _build_pose(0.3167301576609799, 0.018555431414731373, 0.5122904690953525, 0,0,0,0)
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
 
 	publish_kalup_transform(T_kalup_to_panda_link0)
 
-	rospy.loginfo(f"Publishing tcp transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='panda_EE')}")
+	rospy.loginfo(f"Publishing kalup transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
 	pose_in_kalup_frame = PoseStamped()
 	pose_in_kalup_frame.header.stamp = rospy.Time.now()
@@ -511,12 +539,12 @@ def main():
 	# robot_controller.move_to(ee_pose)
 	# return
 
-	print("RobotControl node connecting to policy server.")
+	rospy.loginfo("RobotControl node connecting to policy server.")
 	
 	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
-	print("RobotControl node connected to policy server.")
-	print(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
+	rospy.loginfo("RobotControl node connected to policy server.")
+	rospy.loginfo(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
 	iteration = 0
 	try:
@@ -527,7 +555,13 @@ def main():
 				continue
 			action_chunk = policy_client.infer(observation)["actions"]
 
-			print(action_chunk)
+			buf = io.StringIO()
+			writer = csv.writer(buf)
+			writer.writerow(["x", "y", "z", "rx", "ry", "rz", "gripper_width"])
+			writer.writerows(action_chunk)
+			print(buf.getvalue(), end="")
+			
+			break # for testing
 
 			if CONTROLLER_TYPE == "cartesian_impedance" and MODEL_ENV == "force_vla":
 				robot_controller.execute_tcp_action_chunk(action_chunk)
