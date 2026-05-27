@@ -26,6 +26,9 @@ COPY *.py /catkin_ws/src/robot_control_pkg/scripts/
 
 RUN chmod +x /catkin_ws/src/robot_control_pkg/scripts/*.py
 
+COPY record_inference_bag.sh /record_inference_bag.sh
+RUN chmod +x /record_inference_bag.sh
+
 # Copy optoforce catkin package (the inner directory is the actual catkin package)
 COPY ./optoforce/optoforce /catkin_ws/src/optoforce
 
