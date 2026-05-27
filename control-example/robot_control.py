@@ -13,7 +13,8 @@ import rospy, math
 import csv, io
 import tf
 import tf2_ros
-from geometry_msgs.msg import Pose, PoseArray, PoseStamped, WrenchStamped, TransformStamped
+from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped, Point
+from visualization_msgs.msg import Marker, MarkerArray
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
@@ -69,7 +70,7 @@ class RobotControl:
 		self.pose_publish_rate_hz = float(pose_publish_rate_hz)
 
 		self._pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=10)
-		self._action_chunk_vis_pub = rospy.Publisher('/action_chunk_vis', PoseArray, queue_size=1, latch=True)
+		self._action_chunk_vis_pub = rospy.Publisher('/action_chunk_vis', MarkerArray, queue_size=1, latch=True)
 		self._joint_trajectory_pub = rospy.Publisher('/position_joint_trajectory_controller/command', JointTrajectory, queue_size=1)
 		self._gripper_move_pub = rospy.Publisher(gripper_move_topic, MoveActionGoal, queue_size=10)
 		self._gripper_grasp_pub = rospy.Publisher(gripper_grasp_topic, GraspActionGoal, queue_size=10)
@@ -264,23 +265,37 @@ class RobotControl:
 		return self._latest_force
 	
 	def publish_action_chunk_visualization(self, action_chunk):
-		"""Publish action_chunk as a latched PoseArray in the kalup frame for RViz."""
-		msg = PoseArray()
-		msg.header.stamp = rospy.Time.now()
-		msg.header.frame_id = "kalup"
-		for action in action_chunk:
-			x, y, z, rx, ry, rz = action[0], action[1], action[2], action[3], action[4], action[5]
-			quat = tf.transformations.quaternion_from_euler(rx, ry, rz)
-			p = Pose()
-			p.position.x = float(x)
-			p.position.y = float(y)
-			p.position.z = float(z)
-			p.orientation.x = quat[0]
-			p.orientation.y = quat[1]
-			p.orientation.z = quat[2]
-			p.orientation.w = quat[3]
-			msg.poses.append(p)
-		self._action_chunk_vis_pub.publish(msg)
+		now = rospy.Time.now()
+		array = MarkerArray()
+
+		# DELETE previous markers first so stale points don't linger
+		delete_all = Marker()
+		delete_all.header.stamp = now
+		delete_all.header.frame_id = "kalup"
+		delete_all.ns = "action_chunk"
+		delete_all.action = Marker.DELETEALL
+		array.markers.append(delete_all)
+
+		for i, action in enumerate(action_chunk):
+			m = Marker()
+			m.header.stamp = now
+			m.header.frame_id = "kalup"
+			m.ns = "action_chunk"
+			m.id = i
+			m.type = Marker.SPHERE
+			m.action = Marker.ADD
+			m.pose.position.x = float(action[0])
+			m.pose.position.y = float(action[1])
+			m.pose.position.z = float(action[2])
+			m.pose.orientation.w = 1.0
+			m.scale.x = m.scale.y = m.scale.z = 0.005  # in meters
+			m.color.r = 0.0
+			m.color.g = 0.8
+			m.color.b = 1.0
+			m.color.a = 1.0
+			array.markers.append(m)
+
+		self._action_chunk_vis_pub.publish(array)
 
 	def execute_cartesian_action_chunk(self, action_chunk):
 		rate = rospy.Rate(ACTION_RATE)
