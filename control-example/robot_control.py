@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ACTION_RATE = 30.0  # Hz
-REPLAN_STEPS = 10 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+REPLAN_STEPS = 20 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
 POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
@@ -13,7 +13,7 @@ import rospy, math
 import csv, io
 import tf
 import tf2_ros
-from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped
+from geometry_msgs.msg import Pose, PoseArray, PoseStamped, WrenchStamped, TransformStamped
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import numpy as np
@@ -69,6 +69,7 @@ class RobotControl:
 		self.pose_publish_rate_hz = float(pose_publish_rate_hz)
 
 		self._pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=10)
+		self._action_chunk_vis_pub = rospy.Publisher('/action_chunk_vis', PoseArray, queue_size=1, latch=True)
 		self._joint_trajectory_pub = rospy.Publisher('/position_joint_trajectory_controller/command', JointTrajectory, queue_size=1)
 		self._gripper_move_pub = rospy.Publisher(gripper_move_topic, MoveActionGoal, queue_size=10)
 		self._gripper_grasp_pub = rospy.Publisher(gripper_grasp_topic, GraspActionGoal, queue_size=10)
@@ -180,43 +181,6 @@ class RobotControl:
 
 		self._pose_pub.publish(msg)
 
-	def move_to_blocking(self, pose, pos_tol=0.005, ori_tol=0.05, timeout=15.0):
-		"""
-		Publish target pose repeatedly and block until the TCP has settled within tolerance.
-
-		pos_tol: position tolerance in meters (default 5 mm)
-		ori_tol: orientation tolerance in radians (default ~3 deg)
-		Returns True if converged, False if timed out.
-		"""
-		target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
-		target_quat = np.array([pose.orientation.x, pose.orientation.y,
-		                        pose.orientation.z, pose.orientation.w])
-
-		rate = rospy.Rate(self.pose_publish_rate_hz)
-		deadline = rospy.Time.now() + rospy.Duration(timeout)
-		pos_err = float('inf')
-		ori_err = float('inf')
-
-		while not rospy.is_shutdown():
-			self.move_to(pose)
-
-			actual_pos, actual_quat = self.get_frame_pose(frame='panda_EE')
-			if actual_pos is not None and actual_quat is not None:
-				pos_err = float(np.linalg.norm(np.array(actual_pos) - target_pos))
-				dot = float(abs(np.dot(np.array(actual_quat), target_quat)))
-				ori_err = 2.0 * float(np.arccos(min(1.0, dot)))
-				if pos_err < pos_tol and ori_err < ori_tol:
-					return True
-
-			if rospy.Time.now() > deadline:
-				rospy.logwarn(
-					f"move_to_blocking timed out — pos_err={pos_err*1000:.1f}mm, "
-					f"ori_err={np.degrees(ori_err):.2f}deg"
-				)
-				return False
-
-			rate.sleep()
-
 	def move_tcp_in_kalup_frame(self, pose_in_kalup_frame: PoseStamped):
 		try:
 			self._tf_listener.waitForTransform(
@@ -299,6 +263,25 @@ class RobotControl:
 	def get_latest_wrench(self):
 		return self._latest_force
 	
+	def publish_action_chunk_visualization(self, action_chunk):
+		"""Publish action_chunk as a latched PoseArray in the kalup frame for RViz."""
+		msg = PoseArray()
+		msg.header.stamp = rospy.Time.now()
+		msg.header.frame_id = "kalup"
+		for action in action_chunk:
+			x, y, z, rx, ry, rz = action[0], action[1], action[2], action[3], action[4], action[5]
+			quat = tf.transformations.quaternion_from_euler(rx, ry, rz)
+			p = Pose()
+			p.position.x = float(x)
+			p.position.y = float(y)
+			p.position.z = float(z)
+			p.orientation.x = quat[0]
+			p.orientation.y = quat[1]
+			p.orientation.z = quat[2]
+			p.orientation.w = quat[3]
+			msg.poses.append(p)
+		self._action_chunk_vis_pub.publish(msg)
+
 	def execute_cartesian_action_chunk(self, action_chunk):
 		rate = rospy.Rate(ACTION_RATE)
 
@@ -369,18 +352,22 @@ class RobotControl:
 
 		for i in range(REPLAN_STEPS):
 			action = action_chunk[i]
+			x, y, z, rx, ry, rz = float(action[0]), float(action[1]), float(action[2]), float(action[3]), float(action[4]), float(action[5])
 
+			quat = tf.transformations.quaternion_from_euler(rx, ry, rz)
 
-			# Convert to Pose message and publish.
-			pose = Pose()
-			pose.position.x = ee_translation[0]
-			pose.position.y = ee_translation[1]
-			pose.position.z = ee_translation[2]
-			pose.orientation.x = new_quat[0]
-			pose.orientation.y = new_quat[1]
-			pose.orientation.z = new_quat[2]
-			pose.orientation.w = new_quat[3]
-			self.move_to(pose)
+			pose_in_kalup = PoseStamped()
+			pose_in_kalup.header.stamp = rospy.Time.now()
+			pose_in_kalup.header.frame_id = "kalup"
+			pose_in_kalup.pose.position.x = x
+			pose_in_kalup.pose.position.y = y
+			pose_in_kalup.pose.position.z = z
+			pose_in_kalup.pose.orientation.x = quat[0]
+			pose_in_kalup.pose.orientation.y = quat[1]
+			pose_in_kalup.pose.orientation.z = quat[2]
+			pose_in_kalup.pose.orientation.w = quat[3]
+
+			self.move_tcp_in_kalup_frame(pose_in_kalup)
 
 			rate.sleep()
 
@@ -530,8 +517,7 @@ def main():
 
 	# while True:
 	robot_controller.move_tcp_in_kalup_frame(pose_in_kalup_frame)
-
-	rospy.spin()
+	rospy.sleep(5.0)
 	# robot_controller.gripper_open()
 
 	# ee_pose = _build_pose(0.5521804078001702, 0.03545474781469954, 0.6770280167101107, -0.9910179470831783, 0.014436862832127084, -0.1317547604250494, -0.017608223402260894)
@@ -554,14 +540,16 @@ def main():
 				rospy.sleep(0.1)
 				continue
 			action_chunk = policy_client.infer(observation)["actions"]
-
-			buf = io.StringIO()
-			writer = csv.writer(buf)
-			writer.writerow(["x", "y", "z", "rx", "ry", "rz", "gripper_width"])
-			writer.writerows(action_chunk)
-			print(buf.getvalue(), end="")
+			robot_controller.publish_action_chunk_visualization(action_chunk)
+			# rospy.sleep(50)
 			
-			break # for testing
+			# buf = io.StringIO()
+			# writer = csv.writer(buf)
+			# writer.writerow(["x", "y", "z", "rx", "ry", "rz", "gripper_width"])
+			# writer.writerows(action_chunk)
+			# print(buf.getvalue(), end="")
+			
+			# break # for testing
 
 			if CONTROLLER_TYPE == "cartesian_impedance" and MODEL_ENV == "force_vla":
 				robot_controller.execute_tcp_action_chunk(action_chunk)
@@ -571,6 +559,10 @@ def main():
 				robot_controller.execute_joint_velocity_action_chunk(action_chunk)
 
 			iteration += 1
+			if iteration == 2:
+				rospy.loginfo("Completed 2 iterations, exiting for testing.")
+				break
+
 	except Exception as e:
 		rospy.logerr(f"Exception in main loop: {e}")
 
