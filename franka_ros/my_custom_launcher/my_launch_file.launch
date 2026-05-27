@@ -50,7 +50,7 @@
         output="screen"
         name="rviz"
         unless="$(arg sim)"
-        args="-d $(find franka_example_controllers)/launch/rviz/franka_description_with_marker.rviz
+        args="-d $(find my_custom_launcher)/rviz/franka_with_actions.rviz
               -f $(arg arm_id)_link0
               --splash-screen $(find franka_visualization)/splash.png"/>
 
