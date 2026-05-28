@@ -2,7 +2,7 @@
 
 source /opt/ros/noetic/setup.bash
 
-BAG_NAME="/bags/inference_$(date +%Y%m%d_%H%M%S)"
+BAG_NAME="/bags/inference_$(date +%Y-%m-%dT%H:%M:%S%z)"
 
 rosbag record \
   /joint_states \
