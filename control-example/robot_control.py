@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 ACTION_RATE = 30.0  # Hz — policy query rate
-REPLAN_STEPS = 25 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+REPLAN_STEPS = 15 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+ENSEMBLE_EXP_WEIGHT = 0.1  # exponential decay for ensemble weights; higher = faster decay (less history)
 POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
@@ -15,6 +16,7 @@ import subprocess
 import atexit
 import os
 import signal
+import threading
 import tf
 import tf2_ros
 from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped, Point
@@ -400,6 +402,64 @@ def _build_pose(px, py, pz, ox, oy, oz, ow):
 	pose.orientation.w = float(ow)
 	return pose
 
+class TemporalEnsembler:
+	"""Temporal Ensembling from ACT (Zhao et al., 2023 — arXiv:2304.13705).
+
+	At each timestep the policy is queried and returns an action chunk of length k.
+	Because queries overlap, at step t there are up to k predictions for action a_t
+	(one from each of the last k queries).  These are blended with exponential weights:
+
+	    w_i = exp(-exp_weight * i),   i = steps since that query was made
+
+	so the most recent query always dominates and older predictions fade out smoothly.
+
+	Thread-safe: update() is called from the inference thread; get_action() from the
+	execution thread.  query_step must be captured *before* inference starts so that
+	chunk[offset] correctly indexes the action predicted for the current execution step.
+	"""
+
+	def __init__(self, chunk_size, action_dim, exp_weight=0.1):
+		self._chunk_size = chunk_size
+		self._action_dim = action_dim
+		self._exp_weight = exp_weight
+		self._chunks = []   # [(query_step: int, chunk: np.ndarray)]
+		self._step = 0
+		self._lock = threading.Lock()
+
+	@property
+	def step(self):
+		return self._step   # atomic int read; safe to call from inference thread
+
+	def update(self, action_chunk, query_step):
+		"""Register a new chunk. query_step = execution step when the observation was captured."""
+		with self._lock:
+			self._chunks.append((query_step, np.array(action_chunk, dtype=np.float64)))
+			self._chunks = [(s, c) for s, c in self._chunks if self._step - s < self._chunk_size]
+
+	def get_action(self):
+		"""Return the blended action for the current step and advance the execution counter."""
+		with self._lock:
+			actions, weights = [], []
+			for query_step, chunk in self._chunks:
+				offset = self._step - query_step   # 0 = freshest, larger = older
+				if 0 <= offset < len(chunk):
+					actions.append(chunk[offset])
+					weights.append(np.exp(-self._exp_weight * offset))
+
+			self._step += 1
+
+			if not actions:
+				return None
+			w = np.array(weights)
+			w /= w.sum()
+			return (np.stack(actions) * w[:, None]).sum(axis=0)
+
+	def reset(self):
+		with self._lock:
+			self._chunks.clear()
+			self._step = 0
+
+
 def build_observation(env, prompt, robot_controller):
 	raw_ee = robot_controller.get_latest_ee_image()
 	raw_scene = robot_controller.get_latest_scene_image()
@@ -544,6 +604,30 @@ def recover_from_errors():
 		'std_msgs/Empty', '{}'
 	])
 
+def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
+	"""Background thread: continuously query the policy and push chunks into the ensembler.
+
+	query_step is captured before inference so that chunk[offset] aligns with the
+	correct execution step even after ~0.5 s of inference latency.
+	"""
+	while not stop_event.is_set() and not rospy.is_shutdown():
+		observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
+		if observation is None:
+			rospy.sleep(0.05)
+			continue
+
+		query_step = ensembler.step   # snapshot before blocking inference call
+		try:
+			action_chunk = policy_client.infer(observation)["actions"]
+		except Exception as e:
+			rospy.logwarn(f"Policy inference error: {e}")
+			continue
+
+		ensembler.update(action_chunk, query_step=query_step)
+		robot_controller.publish_action_chunk_visualization(action_chunk)
+		rospy.loginfo(f"New chunk registered (queried at step {query_step}, arrived at step {ensembler.step})")
+
+
 def main():
 	recover_from_errors()
 
@@ -561,45 +645,61 @@ def main():
 	move_to_kalup_zero(robot_controller)
 
 	rospy.loginfo("RobotControl node connecting to policy server.")
-	
+
 	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
 	rospy.loginfo("RobotControl node connected to policy server.")
 
+	max_iterations = 15 * REPLAN_STEPS
 	iteration = 0
+
+	# Prime the ensembler with the first chunk, then hand off inference to a background
+	# thread so the execution loop runs at exactly ACTION_RATE regardless of latency.
+	rospy.loginfo("Waiting for first policy inference before starting execution...")
+	while not rospy.is_shutdown():
+		observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
+		if observation is not None:
+			first_chunk = policy_client.infer(observation)["actions"]
+			break
+		rospy.sleep(0.05)
+
+	chunk_len = len(first_chunk)
+	action_dim = np.array(first_chunk[0]).shape[0]
+	ensembler = TemporalEnsembler(chunk_len, action_dim, ENSEMBLE_EXP_WEIGHT)
+	ensembler.update(first_chunk, query_step=0)
+	robot_controller.publish_action_chunk_visualization(first_chunk)
+	rospy.loginfo(f"Temporal ensembling: chunk_size={chunk_len}, action_dim={action_dim}, exp_weight={ENSEMBLE_EXP_WEIGHT}")
+
+	stop_event = threading.Event()
+	inference_thread = threading.Thread(
+		target=_inference_loop,
+		args=(policy_client, robot_controller, ensembler, stop_event),
+		daemon=True,
+	)
+	inference_thread.start()
+
+	rate = rospy.Rate(ACTION_RATE)
 	try:
 		while not rospy.is_shutdown():
-			observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
-			if observation is None:
-				rospy.sleep(0.1)
-				continue
-			rospy.loginfo(f"Sending observation to policy server for iteration {iteration}.")
-			action_chunk = policy_client.infer(observation)["actions"]
-			robot_controller.publish_action_chunk_visualization(action_chunk)
-			
-			# buf = io.StringIO()
-			# writer = csv.writer(buf)
-			# writer.writerow(["x", "y", "z", "rx", "ry", "rz", "gripper_width"])
-			# writer.writerows(action_chunk)
-			# print(buf.getvalue(), end="")
-			
-			# break # for testing
+			action = ensembler.get_action()
 
-			if CONTROLLER_TYPE == "cartesian_impedance" and MODEL_ENV == "force_vla":
-				robot_controller.execute_tcp_action_chunk(action_chunk)
-			elif CONTROLLER_TYPE == "cartesian_impedance":
-				robot_controller.execute_cartesian_action_chunk(action_chunk)
-			elif CONTROLLER_TYPE == "joint_velocity":
-				robot_controller.execute_joint_velocity_action_chunk(action_chunk)
+			if action is not None:
+				if CONTROLLER_TYPE == "cartesian_impedance" and MODEL_ENV == "force_vla":
+					robot_controller.execute_single_tcp_action(action)
+			else:
+				rospy.logwarn_throttle(1.0, "Ensembler has no actions yet; waiting for inference thread.")
 
 			iteration += 1
-			max_iterations = 5
 			if iteration == max_iterations:
-				rospy.loginfo(f"Completed {max_iterations} iterations, exiting for testing.")
+				rospy.loginfo(f"Completed {max_iterations} steps, exiting for testing.")
 				break
 
+			rate.sleep()
 	except Exception as e:
-		rospy.logerr(f"Exception in main loop: {e}")
+		rospy.logerr(f"Exception in execution loop: {e}")
+	finally:
+		stop_event.set()
+		inference_thread.join(timeout=2.0)
 
 	rospy.loginfo("RobotControl node finished.")
 
