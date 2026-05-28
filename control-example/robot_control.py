@@ -123,7 +123,6 @@ class RobotControl:
 		# self._vel_ctrl = JointVelocityController(command_hz=ACTION_RATE)
 
 	def _force_cb(self, msg):
-		msg.wrench.force.z = -msg.wrench.force.z
 		self._latest_force = msg
 
 	def _joint_states_cb(self, msg):

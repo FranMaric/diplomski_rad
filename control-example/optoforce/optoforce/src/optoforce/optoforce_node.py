@@ -127,7 +127,7 @@ class OptoforceNode(object):
             self._wrenches[i].header.stamp = stamp
             self._wrenches[i].wrench.force.x = data.force[i][0] - bias[i][0]
             self._wrenches[i].wrench.force.y = data.force[i][1] - bias[i][1]
-            self._wrenches[i].wrench.force.z = data.force[i][2] - bias[i][2]
+            self._wrenches[i].wrench.force.z = -(data.force[i][2] - bias[i][2])
             if self._driver.nb_axis() == 6:
                 self._wrenches[i].wrench.torque.x = data.force[i][3] - bias[i][3]
                 self._wrenches[i].wrench.torque.y = data.force[i][4] - bias[i][4]
