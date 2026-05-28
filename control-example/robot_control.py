@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-ACTION_RATE = 30.0  # Hz
-REPLAN_STEPS = 20 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
+ACTION_RATE = 30.0  # Hz — policy query rate
+REPLAN_STEPS = 25 # how many steps to execute from each policy inference before re-querying policy server for next action chunk
 POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
@@ -13,6 +13,8 @@ import rospy, math
 import csv, io
 import subprocess
 import atexit
+import os
+import signal
 import tf
 import tf2_ros
 from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped, Point
@@ -446,7 +448,6 @@ def build_observation(env, prompt, robot_controller):
 		}
 		return observation
 	elif env == "force_vla":
-		rospy.loginfo(f"Force: {robot_controller._latest_force}")
 		if robot_controller._latest_force is None:
 			rospy.logwarn("No force info available.")
 			return None
@@ -487,7 +488,9 @@ def build_observation(env, prompt, robot_controller):
 		raise ValueError(f"Unsupported env: {env}")
 	
 
-def publish_kalup_transform(tcp_pose):
+def publish_kalup_transform():
+	T_kalup_to_panda_link0 = _build_pose(0.3208041427954132, -0.04823811340748261, 0.5164062837874686, 0,0,0,0)
+
 	broadcaster = tf2_ros.StaticTransformBroadcaster()
 	t = TransformStamped()
 
@@ -496,9 +499,9 @@ def publish_kalup_transform(tcp_pose):
 	t.child_frame_id = "kalup"
 
 	# Translation (meters) - measure from robot base to kalup center
-	t.transform.translation.x = tcp_pose.position.x
-	t.transform.translation.y = tcp_pose.position.y
-	t.transform.translation.z = tcp_pose.position.z
+	t.transform.translation.x = T_kalup_to_panda_link0.position.x
+	t.transform.translation.y = T_kalup_to_panda_link0.position.y
+	t.transform.translation.z = T_kalup_to_panda_link0.position.z
 
 	rpy = [0, 0, np.pi / 2]
 	quat = tf.transformations.quaternion_from_euler(*rpy) 
@@ -515,49 +518,47 @@ def record_bag():
 		["bash", "/catkin_ws/record_inference_bag.sh"],
 		stdout=subprocess.DEVNULL,
 		stderr=subprocess.DEVNULL,
+		preexec_fn=os.setsid,
 	)
-	atexit.register(bag_proc.terminate)
+	def _stop_bag():
+		try:
+			os.killpg(os.getpgid(bag_proc.pid), signal.SIGINT)
+			bag_proc.wait(timeout=10)
+		except Exception:
+			bag_proc.kill()
+	atexit.register(_stop_bag)
 	rospy.loginfo(f"Bag recording started (pid={bag_proc.pid}).")
 
-def main():
-	record_bag()
+def move_to_kalup_zero(robot_controller):
+	pose_in_kalup_frame = PoseStamped()
+	pose_in_kalup_frame.pose = _build_pose(0, 0, 0, 0, 0, 0, 1)
+	pose_in_kalup_frame.header.stamp = rospy.Time.now()
+	pose_in_kalup_frame.header.frame_id = "kalup"
 
-	T_kalup_to_panda_link0 = _build_pose(0.3167301576609799, 0.018555431414731373, 0.5152904690953525, 0,0,0,0)
+	robot_controller.move_tcp_in_kalup_frame(pose_in_kalup_frame)
+	rospy.loginfo("Sent move command to initial pose above kalup.")
+	rospy.sleep(3.0)
+
+
+def main():
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
 
-	publish_kalup_transform(T_kalup_to_panda_link0)
+	publish_kalup_transform()
 
-	rospy.loginfo(f"Publishing kalup transform. Current TCP frame pose defined in panda_link0: {robot_controller.get_frame_pose(frame='panda_EE')}")
+	rospy.loginfo(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
-	pose_in_kalup_frame = PoseStamped()
-	pose_in_kalup_frame.header.stamp = rospy.Time.now()
-	pose_in_kalup_frame.header.frame_id = "kalup"
-	pose_in_kalup_frame.pose.position.x = 0
-	pose_in_kalup_frame.pose.position.y = 0
-	pose_in_kalup_frame.pose.position.z = 0
-	pose_in_kalup_frame.pose.orientation.x = 0
-	pose_in_kalup_frame.pose.orientation.y = 0
-	pose_in_kalup_frame.pose.orientation.z = 0
-	pose_in_kalup_frame.pose.orientation.w = 1
+	input("\n --------- Press Enter to proceed with the script and start recording ---------  \n\n")
+	record_bag()
 
-	# while True:
-	robot_controller.move_tcp_in_kalup_frame(pose_in_kalup_frame)
-	rospy.sleep(5.0)
-	# robot_controller.gripper_open()
-
-	# ee_pose = _build_pose(0.5521804078001702, 0.03545474781469954, 0.6770280167101107, -0.9910179470831783, 0.014436862832127084, -0.1317547604250494, -0.017608223402260894)
-
-	# robot_controller.move_to(ee_pose)
-	# return
+	move_to_kalup_zero(robot_controller)
 
 	rospy.loginfo("RobotControl node connecting to policy server.")
 	
 	policy_client = websocket_client_policy.WebsocketClientPolicy(host=POLICY_SERVER_HOST, port=8000)
 
 	rospy.loginfo("RobotControl node connected to policy server.")
-	rospy.loginfo(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
 	iteration = 0
 	try:
@@ -566,9 +567,9 @@ def main():
 			if observation is None:
 				rospy.sleep(0.1)
 				continue
+			rospy.loginfo(f"Sending observation to policy server for iteration {iteration}.")
 			action_chunk = policy_client.infer(observation)["actions"]
 			robot_controller.publish_action_chunk_visualization(action_chunk)
-			# rospy.sleep(50)
 			
 			# buf = io.StringIO()
 			# writer = csv.writer(buf)
@@ -586,8 +587,9 @@ def main():
 				robot_controller.execute_joint_velocity_action_chunk(action_chunk)
 
 			iteration += 1
-			if iteration == 2:
-				rospy.loginfo("Completed 2 iterations, exiting for testing.")
+			max_iterations = 5
+			if iteration == max_iterations:
+				rospy.loginfo(f"Completed {max_iterations} iterations, exiting for testing.")
 				break
 
 	except Exception as e:
