@@ -11,6 +11,8 @@ MODEL_PROMPT = "sand the mold"
 
 import rospy, math
 import csv, io
+import subprocess
+import atexit
 import tf
 import tf2_ros
 from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped, Point
@@ -508,9 +510,19 @@ def publish_kalup_transform(tcp_pose):
 
 	broadcaster.sendTransform(t)
 
+def record_bag():
+	bag_proc = subprocess.Popen(
+		["bash", "/catkin_ws/record_inference_bag.sh"],
+		stdout=subprocess.DEVNULL,
+		stderr=subprocess.DEVNULL,
+	)
+	atexit.register(bag_proc.terminate)
+	rospy.loginfo(f"Bag recording started (pid={bag_proc.pid}).")
 
 def main():
-	T_kalup_to_panda_link0 = _build_pose(0.3167301576609799, 0.018555431414731373, 0.5122904690953525, 0,0,0,0)
+	record_bag()
+
+	T_kalup_to_panda_link0 = _build_pose(0.3167301576609799, 0.018555431414731373, 0.5152904690953525, 0,0,0,0)
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
