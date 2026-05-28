@@ -370,24 +370,23 @@ class RobotControl:
 
 		for i in range(REPLAN_STEPS):
 			action = action_chunk[i]
-			x, y, z, rx, ry, rz = float(action[0]), float(action[1]), float(action[2]), float(action[3]), float(action[4]), float(action[5])
-
-			quat = tf.transformations.quaternion_from_euler(rx, ry, rz)
-
-			pose_in_kalup = PoseStamped()
-			pose_in_kalup.header.stamp = rospy.Time.now()
-			pose_in_kalup.header.frame_id = "kalup"
-			pose_in_kalup.pose.position.x = x
-			pose_in_kalup.pose.position.y = y
-			pose_in_kalup.pose.position.z = z
-			pose_in_kalup.pose.orientation.x = quat[0]
-			pose_in_kalup.pose.orientation.y = quat[1]
-			pose_in_kalup.pose.orientation.z = quat[2]
-			pose_in_kalup.pose.orientation.w = quat[3]
-
-			self.move_tcp_in_kalup_frame(pose_in_kalup)
-
+			self.execute_single_tcp_action(action)
 			rate.sleep()
+
+	def execute_single_tcp_action(self, action):
+		x, y, z, rx, ry, rz = float(action[0]), float(action[1]), float(action[2]), float(action[3]), float(action[4]), float(action[5])
+		quat = tf.transformations.quaternion_from_euler(rx, ry, rz)
+		pose_in_kalup = PoseStamped()
+		pose_in_kalup.header.stamp = rospy.Time.now()
+		pose_in_kalup.header.frame_id = "kalup"
+		pose_in_kalup.pose.position.x = x
+		pose_in_kalup.pose.position.y = y
+		pose_in_kalup.pose.position.z = z
+		pose_in_kalup.pose.orientation.x = quat[0]
+		pose_in_kalup.pose.orientation.y = quat[1]
+		pose_in_kalup.pose.orientation.z = quat[2]
+		pose_in_kalup.pose.orientation.w = quat[3]
+		self.move_tcp_in_kalup_frame(pose_in_kalup)
 
 
 def _build_pose(px, py, pz, ox, oy, oz, ow):
@@ -538,8 +537,16 @@ def move_to_kalup_zero(robot_controller):
 	rospy.loginfo("Sent move command to initial pose above kalup.")
 	rospy.sleep(3.0)
 
+def recover_from_errors():
+	subprocess.run([
+		'rostopic', 'pub', '--once',
+		'/franka_control/error_recovery/goal',
+		'std_msgs/Empty', '{}'
+	])
 
 def main():
+	recover_from_errors()
+
 	rospy.loginfo("RobotControl node init.")
 
 	robot_controller = RobotControl()
