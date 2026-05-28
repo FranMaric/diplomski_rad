@@ -25,7 +25,7 @@
 
   <!-- REAL ROBOT controllers -->
   <rosparam command="load"
-      file="$(find franka_example_controllers)/config/franka_example_controllers.yaml"
+      file="$(find serl_franka_controllers)/config/serl_franka_controllers.yaml"
       subst_value="true"
       unless="$(arg sim)"/>
 
@@ -40,10 +40,9 @@
         type="spawner"
         respawn="false"
         output="screen"
-        args="cartesian_pose_controller"/> <!-- cartesian_pose_controller / cartesian_impedance_example_controller / position_joint_trajectory_controller -->
+        args="cartesian_impedance_controller"/> <!-- serl: cartesian_impedance_controller / joint_position_controller -->
 
-  <!-- set_compliance_params is for cartesian_impedance_example_controller only, not needed with cartesian_pose_example_controller -->
-  <!-- <node name="set_compliance_params" pkg="my_custom_launcher" type="set_compliance_params.py" output="screen"/> -->
+  <node name="set_compliance_params" pkg="my_custom_launcher" type="set_compliance_params.py" output="screen"/>
 
   <node pkg="rviz"
         type="rviz"

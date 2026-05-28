@@ -8,7 +8,7 @@ rosbag record \
   /joint_states \
   /ee_camera/image_raw \
   /scene_camera/image_raw \
-  /cartesian_pose_controller/equilibrium_pose \
+  /cartesian_impedance_controller/equilibrium_pose \
   /optoforce_0 \
   /tf \
   /tf_static \
