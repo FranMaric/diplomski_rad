@@ -7,7 +7,7 @@ POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
 VELOCITY_SCALING = 0.2
-
+SAVE_ACTION_CHUNKS_AS_CSV = True
 MODEL_PROMPT = "sand the mold"
 
 import rospy, math
@@ -610,6 +610,7 @@ def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
 	query_step is captured before inference so that chunk[offset] aligns with the
 	correct execution step even after ~0.5 s of inference latency.
 	"""
+	chunk_index = 1 # for CSV naming if enabled
 	while not stop_event.is_set() and not rospy.is_shutdown():
 		observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
 		if observation is None:
@@ -622,6 +623,11 @@ def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
 		except Exception as e:
 			rospy.logwarn(f"Policy inference error: {e}")
 			continue
+		
+		if SAVE_ACTION_CHUNKS_AS_CSV:
+			csv_path = os.path.join("/bags", f"action_chunk_{chunk_index}.csv")
+			np.savetxt(csv_path, np.array(action_chunk), delimiter=",", header="x,y,z,rx,ry,rz,gripper_width", comments="")
+			chunk_index += 1
 
 		ensembler.update(action_chunk, query_step=query_step)
 		robot_controller.publish_action_chunk_visualization(action_chunk)
