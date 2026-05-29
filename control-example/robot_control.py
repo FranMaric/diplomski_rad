@@ -7,7 +7,7 @@ POLICY_SERVER_HOST = "161.53.68.175" # steffy
 MODEL_ENV = "force_vla" #"pi05_droid" # "pi05_libero" or "pi05_droid"
 CONTROLLER_TYPE =  "cartesian_impedance" # "cartesian_impedance" or "joint_velocity"
 VELOCITY_SCALING = 0.2
-SAVE_ACTION_CHUNKS_AS_CSV = True
+SAVE_ACTION_CHUNKS_AS_CSV = False
 MODEL_PROMPT = "sand the mold"
 
 import rospy, math
@@ -528,6 +528,8 @@ def build_observation(env, prompt, robot_controller):
 		wrench = robot_controller._latest_force.wrench
 		force = np.array([wrench.force.x, wrench.force.y, wrench.force.z, wrench.torque.x, wrench.torque.y, wrench.torque.z], dtype=np.float32)
 
+		force = np.array([0, 0, force[2], 0, 0, 0], dtype=np.float32)
+
 		state = np.concatenate([
 			ee_pos,           				# idx 0,1,2  (m)
 			ee_euler_angle,           		# idx 3,4,5  (rad, axis-angle)
@@ -588,8 +590,10 @@ def record_bag():
 	rospy.loginfo(f"Bag recording started (pid={bag_proc.pid}).")
 
 def move_to_kalup_zero(robot_controller):
+	quat = tf.transformations.quaternion_from_euler(0.6, 0, 0)
+
 	pose_in_kalup_frame = PoseStamped()
-	pose_in_kalup_frame.pose = _build_pose(0, 0, 0, 0, 0, 0, 1)
+	pose_in_kalup_frame.pose = _build_pose(0, 0.005, 0.0, quat[0], quat[1], quat[2], quat[3])
 	pose_in_kalup_frame.header.stamp = rospy.Time.now()
 	pose_in_kalup_frame.header.frame_id = "kalup"
 
@@ -619,7 +623,11 @@ def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
 
 		query_step = ensembler.step   # snapshot before blocking inference call
 		try:
-			action_chunk = policy_client.infer(observation)["actions"]
+			start_time = rospy.Time.now()
+			response = policy_client.infer(observation)
+			infer_plus_network_time = (rospy.Time.now() - start_time).to_sec() * 1000
+			action_chunk = response["actions"]
+			infer_ms = response["policy_timing"]["infer_ms"]
 		except Exception as e:
 			rospy.logwarn(f"Policy inference error: {e}")
 			continue
@@ -631,7 +639,7 @@ def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
 
 		ensembler.update(action_chunk, query_step=query_step)
 		robot_controller.publish_action_chunk_visualization(action_chunk)
-		rospy.loginfo(f"New chunk registered (queried at step {query_step}, arrived at step {ensembler.step})")
+		rospy.loginfo(f"New chunk registered (queried at step {query_step}, arrived at step {ensembler.step}), infer_ms={infer_ms:.3f}, infer+network_ms={infer_plus_network_time:.3f}")
 
 
 def main():
@@ -695,10 +703,10 @@ def main():
 			else:
 				rospy.logwarn_throttle(1.0, "Ensembler has no actions yet; waiting for inference thread.")
 
-			iteration += 1
-			if iteration == max_iterations:
-				rospy.loginfo(f"Completed {max_iterations} steps, exiting for testing.")
-				break
+			# iteration += 1
+			# if iteration == max_iterations:
+			# 	rospy.loginfo(f"Completed {max_iterations} steps, exiting for testing.")
+			# 	break
 
 			rate.sleep()
 	except Exception as e:
