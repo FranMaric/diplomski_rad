@@ -1,5 +1,9 @@
 \documentclass[times, utf8, diplomski]{fer}
 \usepackage{booktabs}
+\usepackage{pgfplots}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\pgfplotsset{compat=1.18}
 
 \begin{document}
 
@@ -29,6 +33,24 @@ moj zadatak je bio da budem jako marljivi uporan
 \section{Hipoteza}
 
 \chapter{Pregled podrucja}
+\section{Transformer model}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.6\textwidth]{images/transformer model architecture.PNG}
+    \caption{Arhitektura transformer modela}
+    \label{fig:my_image}
+\end{figure}
+
+\section{Mixture of experts}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{images/mixture of experts architecture.PNG}
+    \caption{MoE arhitektura}
+    \label{fig:my_image}
+\end{figure}
+
 \section{LLM}
 \section{VLM}
 \section{VLA}
@@ -39,6 +61,13 @@ moj zadatak je bio da budem jako marljivi uporan
 \section{VLA sa silom}
 \subsection{ForceVLA}
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{images/forcevla.PNG}
+    \caption{Arhitektura ForceVLA modela}
+    \label{fig:my_image}
+\end{figure}
+
 \chapter{Postava}
 \section{Senzor sile}
 sirovi podatci su vrlo sumoviti i driftaju, EMA filter
@@ -48,18 +77,24 @@ web camera, 3D printani mount
 - 3D printani kako ne bi prezasitio senzor sile
 \section{ROS}
 
-\chapter{Demonstracija}
+\chapter{Demonstracija - skupljanje podataka}
 sinkronizacija podataka, 30Hz, vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
 
 \chapter{Ucenje}
+
 \section{Arhitektura mreze}
 \section{Reprezentacija akcije}
 - joint velocity
 - delta EE pose
 - absolute EE pose
-\section{Gradijentni spust}
+\section{Metrike ucenja}
+\input{graphs/loss_graphs}
 
 \chapter{Evaluacija}
+\section{Vizualizacija inferencije}
+
+\input{graphs/tri_inferencije}
+
 \section{Metrika}
 - sila:
     - konstantna sila tijekom kontakta?
@@ -73,6 +108,10 @@ sinkronizacija podataka, 30Hz, vecina koristi teleoperaciju dok mi koristimo slo
     - promjena jezicne upute (poliraj vs brusi vs izgladi vs obradi povrsinu)
 \section{Ablacije}
 - samo Z sila ili sve sile i torqueovi
+
+\chapter{Kritika}
+- yan le cun difficult of scaling behaviours and lack of explicit planning (npr ode do kraja kalupa i ne vrati se ili poludi kad je u zraku)
+- Dont predict consencuences of their actions
 
 \chapter{Zaključak}
 
