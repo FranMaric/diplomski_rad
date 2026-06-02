@@ -19,47 +19,86 @@ podataka}
 % Ispis stranice s napomenom o umetanju izvornika rada. Uklonite naredbu \izvornik ako želite izbaciti tu stranicu.
 \izvornik
 
-\zahvala{Najvise se zelim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo zivotnoj podrsci i pomoci. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podrsci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Zelim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih rupa u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez cije podrske ovaj rad ne bi bio moguc. Od njih zelim istaknuti asistenta Peru Drobac, asistenta Brunu Marica i mentora Matka Orsaga.}
+\zahvala{Najviše se želim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo životnoj podršci i pomoći. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podršci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Želim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih nedostataka u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez čije pomoći ovaj rad ne bi bio moguć. Od njih želim istaknuti asistenta Peru Drobac, asistenta Brunu Marića i mentora Matka Orsaga.}
 
 \tableofcontents
 
 \chapter{Uvod}
-Podrucje robotike sve vise se oslanja na neuronske mreze. Neuronske mreze su se pokazale kao vrlo efektivne za obradu sliku, ekstrakciju semantickog znacenja iz slika, obradu jezika i slicne primjene. Transformer je nova arhitektura neuronskih mreza koja se pokazala vrlo znacajnom u obradi prirodnog jezika. Takoder je znacajno utjecala na podrucje obrade slike. Ti napretci u zadnjih pet godina su motivirali istrazivace da primjene istu arhitekturu neuronskih mreza na zadatke manipulacije robotskim rukama. U ovom radu cemo pregledati podrucje neuronskih mreza baziranih na transformer arhitekturama koje su ostavile znacajan utjecaj na podrucje robotike. Izradit cemo podatke temeljene na ljudskim demonstracijama i evaluirati neuronsku mrezu treniranu na tim podatcima.
+Područje robotike sve više se oslanja na neuronske mreže. Neuronske mreže su se pokazale kao vrlo efektivne za obradu slika, ekstrakciju semantičkog značenja iz slika, obradu jezika i slične primjene. Transformer je nova arhitektura neuronskih mreža koja se pokazala vrlo značajnom u obradi prirodnog jezika. Također je značajno utjecala na područje obrade slike. Ti napretci u zadnjih pet godina su motivirali istraživače da primijene istu arhitekturu neuronskih mreža na zadatke manipulacije robotskim rukama. U ovom radu ćemo pregledati područje neuronskih mreža baziranih na transformer arhitekturama koje su ostavile značajan utjecaj na područje robotike. Izradit ćemo postav za prikupljanje podatka temeljenih na ljudskim demonstracijama i evaluirati neuronsku mrežu treniranu na tim podatcima.
 
 \chapter{Motivacija}
 
-\section{Zadatak}
-moj zadatak je bio da budem jako marljivi uporan
-\section{Hipoteza}
 
 \chapter{Pregled podrucja}
-\section{Transformer model}
+\section{Transformer model} -- TODO: review this section
 
-\begin{figure}[htbp]
+Dominantni modeli za obradu sekvenci, poput prijevoda teksta, prije transformera su se oslanjali na rekurentne neuronske mreže (RNN, LSTM). Glavni problem tih arhitektura je sekvencijalne prirode tj. svaki korak ovisi o prethodnom, što onemogućuje paralelizaciju i otežava učenje dugoročnih ovisnosti. Istraživači iz Google-a 2017. godine predstavili su novu arhitekturu neuronskih modela za obradu sekvenci zvanu transformer, koja se temelji isključivo na mehanizmu pažnje (eng. attention), bez ikakve rekurencije ili konvolucija. To omogućuje znatno brže treniranje i bolje rezultate.
+
+\begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{images/transformer model architecture.PNG}
+    \includegraphics[width=0.55\textwidth]{images/transformer model architecture.PNG}
     \caption{Arhitektura transformer modela}
     \label{fig:my_image}
 \end{figure}
 
+Model se sastoji od enkodera i dekodera, svaki s po 6 identičnih slojeva. Enkoder obrađuje ulazni tekst, a dekoder generira izlaz korak po korak.
+
+Enkoder se sastoji od stoga N = 6 identičnih slojeva. Svaki sloj ima dva podsloja. Prvi je mehanizam višeglave samopažnje, a drugi je jednostavna, pozicijski potpuno povezana mreža za propagaciju unaprijed. Oko svakog od dva podsloja primjenjujemo rezidualne veze [11], nakon kojih slijedi normalizacija sloja [1]. Drugim riječima, izlaz svakog podsloja je LayerNorm(x + Podsloj(x)), gdje je Podsloj(x) funkcija koju implementira sam podsloj. Kako bi se olakšalo korištenje rezidualnih veza, svi podslojevi u modelu, kao i slojevi ugradnje, proizvode izlaze dimenzije d\_model = 512.
+
+Dekoder se također sastoji od stoga N = 6 identičnih slojeva. Uz dva podsloja prisutna u svakom sloju enkodera, dekoder uvodi i treći podsloj koji provodi višeglavu pažnju nad izlazom stoga enkodera. Kao i u enkoderu, oko svakog podsloja primjenjujemo rezidualne veze, nakon kojih slijedi normalizacija sloja. Također modificiramo podsloj samopažnje u stogu dekodera kako bismo spriječili da pojedine pozicije "vide" naknadne pozicije. To maskiranje, u kombinaciji s činjenicom da su izlazne ugradnje pomaknute za jednu poziciju, osigurava da predviđanja za poziciju i mogu ovisiti isključivo o poznatim izlazima na pozicijama manjim od i.
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.3\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/attention head.PNG}
+        \caption{Mehanizam pažnje}
+        \label{fig:slika1}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/multi head attention.PNG}
+        \caption{Pažnja sa h glava}
+        \label{fig:slika2}
+    \end{minipage}
+\end{figure}
+
+Naš mehanizam pažnje nazivamo \textit{Scaled Dot-Product Attention}. Ulaz se sastoji od upita i ključeva dimenzije $d_k$, te vrijednosti dimenzije $d_v$. Računamo skalarni produkt upita sa svim ključevima, dijelimo s $\sqrt{d_k}$, te primjenjujemo softmax kako bismo dobili težine nad vrijednostima:
+
+\begin{equation}
+    \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
+
+Za male vrijednosti $d_k$ aditivna pažnja i pažnja skalarnog produkta daju slične rezultate, no za veće vrijednosti $d_k$ skalarni produkti postaju veliki po iznosu, gurajući softmax u područja s malim gradijentima. Zbog toga skaliramo s $\frac{1}{\sqrt{d_k}}$.
+
+Umjesto jedne funkcije pažnje, model paralelno izvodi 8 glava pažnje u različitim podprostorima reprezentacija. To mu omogućuje da istovremeno "pazi" na različite aspekte rečenice.
+
+Budući da model nema rekurenciju, pozicija riječi u rečenici kodira se sinusoidalnim funkcijama koje se dodaju na ulazne vektore. Pozicijsko kodiranje može se usporediti sa pozicijom filtera (eng. kernel) u konvolucijskim mrežama te budući da transformeri nemaju pomičan filter niti rekurenciju potrebno je na ovaj način modelu dati pozicijsku informaciju.
+
+Samopažnja (self-attention) povezuje sve pozicije u sekvenci s konstantnim brojem operacija O(1), dok rekurentni slojevi zahtijevaju O(n) operacija. To znači kraće "putanje" između udaljenih dijelova teksta i lakše učenje dugoročnih ovisnosti — uz znatno bolju paralelizaciju.
+
+Na zadatku engleski → njemački (WMT 2014) postignut je rezultat od 28,4 BLEU, što je više od 2 boda iznad dotadašnjeg najboljeg modela. Na zadatku engleski → francuski postignut je rezultat od 41,8 BLEU - novi rekord za jedan model, treniran za samo 3,5 dana na 8 GPU-ova.
+
+Transformer arhitektura postala je temelj gotovo svim modernim jezičnim modelima — BERT, GPT, T5 i svim ostalim velikim modelima koji su uslijedili. Ključna spoznaja da rekurencija uopće nije potrebna, već samo mehanizam pažnje, bila je u to vrijeme revolucionarna i trajno je promijenila područje umjetne inteligencije.
+
+\section{LLM}
+in general nesto o njima ukratko idk
+\section{VLM - PaliGEMMA}
+baza za Pi0
+\section{VLA - $\pi_0$}
+baza za ForceVLA
+
 \section{Mixture of experts}
 
-\begin{figure}[htbp]
+\begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{images/mixture of experts architecture.PNG}
     \caption{MoE arhitektura}
     \label{fig:my_image}
 \end{figure}
 
-\section{LLM}
-\section{VLM}
-\section{VLA}
-\subsection{RT2}
-\subsection{OpenVLA}
-\subsection{Gr00t}
-\subsection{Pi0}
-\section{VLA sa silom}
-\subsection{ForceVLA}
+\section{ForceVLA}
 
 \begin{figure}[htbp]
     \centering
@@ -78,7 +117,8 @@ web camera, 3D printani mount
 \section{ROS}
 
 \chapter{Demonstracija - skupljanje podataka}
-sinkronizacija podataka, 30Hz, vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
+sinkronizacija podataka, 30Hz, popunjavanja rupa
+vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
 
 \chapter{Ucenje}
 
@@ -87,10 +127,14 @@ sinkronizacija podataka, 30Hz, vecina koristi teleoperaciju dok mi koristimo slo
 - joint velocity
 - delta EE pose
 - absolute EE pose
+
 \section{Metrike ucenja}
 \input{graphs/loss_graphs}
+Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući je u prvom koraku greška bila 5 koja je eksponencijalno padala u početku te kasnije primjećujemo značajno blaži pad. Prikazani su podatci samo do koraka 30000 iako su trenirani na više koraka. Model sa svim silama je treniran do 50000. i model sa samo Z silom do 100000. koraka. Nakon 30000. koraka oba modela dosegnu grešku oko 0.005 i dalje osciliraju oko te točke tj. možemo reći da su modeli tada konvergirali.
 
 \chapter{Evaluacija}
+\section{Kontrola robota}
+
 \section{Vizualizacija inferencije}
 
 \input{graphs/tri_inferencije}
