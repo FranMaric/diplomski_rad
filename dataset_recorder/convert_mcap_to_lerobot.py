@@ -517,9 +517,10 @@ VIDEO_CODEC = "libx264"
 ROBOT_TYPE  = "manipulator"
 
 MCAP_GLOB = (
-    "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_kalup_frame_0.mcap"
+    # "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_kalup_frame_0.mcap" # with all forces
+    "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_0_30hz_0_kalup_frame_0_fz_only/episode_*_0_30hz_0_kalup_frame_0_fz_only_0.mcap"
 )
-
+# episode_1/episode_1_0_30hz/episode_1_0_30hz_0_kalup_frame/episode_1_0_30hz_0_kalup_frame_0_fz_only/episode_1_0_30hz_0_kalup_frame_0_fz_only_0.mcap
 
 def _discover_mcaps(bags_dir: Path) -> list[Path]:
     mcaps = sorted(

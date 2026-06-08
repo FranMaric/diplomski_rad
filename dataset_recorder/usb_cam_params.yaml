@@ -2,9 +2,20 @@ usb_cam:
   ros__parameters:
     video_device: "/dev/video2"
     framerate: 30.0
-    pixel_format: "mjpeg2rgb"
-    image_width: 960
-    image_height: 720
+    pixel_format: "yuyv"
+    # image_width: 960
+    # image_height: 720
     camera_name: "usb_cam"
     camera_info_url: ""
     brightness: 150
+# rgb8
+# yuyv
+# yuyv2rgb
+# uyvy
+# uyvy2rgb
+# mono8
+# mono16
+# y102mono8
+# raw_mjpeg
+# mjpeg2rgb
+# m4202rgb
