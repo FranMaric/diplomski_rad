@@ -19,18 +19,39 @@ podataka}
 % Ispis stranice s napomenom o umetanju izvornika rada. Uklonite naredbu \izvornik ako želite izbaciti tu stranicu.
 \izvornik
 
-\zahvala{Najviše se želim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo životnoj podršci i pomoći. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podršci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Želim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih nedostataka u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez čije pomoći ovaj rad ne bi bio moguć. Od njih želim istaknuti asistenta Peru Drobac, asistenta Brunu Marića i mentora Matka Orsaga.}
+\zahvala{Najviše se želim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo životnoj podršci i pomoći. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podršci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Želim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih nedostataka u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez čije pomoći ovaj rad ne bi bio moguć. Od njih želim istaknuti asistenta Peru Drobca, asistenta Brunu Marića i mentora Matka Orsaga.}
 
 \tableofcontents
 
 \chapter{Uvod}
-Područje robotike sve više se oslanja na neuronske mreže. Neuronske mreže su se pokazale kao vrlo efektivne za obradu slika, ekstrakciju semantičkog značenja iz slika, obradu jezika i slične primjene. Transformer je nova arhitektura neuronskih mreža koja se pokazala vrlo značajnom u obradi prirodnog jezika. Također je značajno utjecala na područje obrade slike. Ti napretci u zadnjih pet godina su motivirali istraživače da primijene istu arhitekturu neuronskih mreža na zadatke manipulacije robotskim rukama. U ovom radu ćemo pregledati područje neuronskih mreža baziranih na transformer arhitekturama koje su ostavile značajan utjecaj na područje robotike. Izradit ćemo postav za prikupljanje podatka temeljenih na ljudskim demonstracijama i evaluirati neuronsku mrežu treniranu na tim podatcima.
+Područje robotike sve više se oslanja na neuronske mreže. Neuronske mreže su se pokazale kao vrlo efektivne za obradu slika, ekstrakciju semantičkog značenja iz slika, obradu jezika i slične primjene. Transformer je nova arhitektura neuronskih mreža koja se pokazala vrlo značajnom u obradi prirodnog jezika. Također je značajno utjecala na područje obrade slike. Ti napretci u zadnjih pet godina su motivirali istraživače da primijene istu arhitekturu neuronskih mreža na zadatke manipulacije robotskim rukama tj. imitacijsko učenje. U ovom radu ćemo pregledati područje neuronskih mreža baziranih na transformer arhitekturama koje su ostavile značajan utjecaj na područje robotike. Izradit ćemo postav za prikupljanje podatka temeljenih na ljudskim demonstracijama i evaluirati neuronsku mrežu treniranu na tim podatcima.
 
-\chapter{Motivacija}
+\chapter{Pregled područja}
+\section{Imitacijsko učenje}
 
+Imitacijsko učenje (engl. Imitation Learning, IL) predstavlja paradigmu strojnog učenja u kojoj agent uči politiku ponašanja promatranjem ekspertovih demonstracija, bez eksplicitno definirane funkcije nagrade. Za razliku od učenja potkrepljivanjem (engl. Reinforcement Learning, RL), koje zahtijeva interakciju s okolinom i evaluaciju ishoda, imitacijsko učenje omogućuje direktno prenošenje znanja iz demonstracija na agenta, što ga čini posebno pogodnim za robotske sustave gdje je definiranje prikladne funkcije nagrade teško ili je interakcija s fizičkom okolinom skupa i potencijalno opasna.
 
-\chapter{Pregled podrucja}
-\section{Transformer model} -- TODO: review this section
+Najjednostavniji oblik imitacijskog učenja je \textbf{bihevioralno kloniranje} (engl. Behaviour Cloning, BC), koje problem imitacije formulira kao nadzirano učenje: iz demonstracija se ekstrahiraju parovi stanje--akcija $(s_t, a_t)$ na kojima se model trenira da nauči direktno mapiranje $\pi_\theta: s_t \mapsto a_t$. Unatoč konceptualnoj jednostavnosti i lakoći implementacije, BC pati od fundamentalnog problema \textbf{kumulativnih grešaka} (engl. compounding errors) svaka mala greška u predikciji akcije gura agenta u stanja koja nisu viđena u treningu, što uzrokuje progresivni drift od naučene trajektorije. Kako agent nikada nije vidio takva stanja, svaka sljedeća akcija postaje sve nepouzdanija, a greške se kumuliraju kroz vrijeme. Ovaj problem posebno je izražen u zadacima fine manipulacije koji zahtijevaju preciznost na razini milimetara, kakav je i zadatak brušenja metalnih kalupa razmatran u ovom radu.
+
+Istraživači koji su napisali \textbf{ALOHA} rad \cite{zhao2023aloha} adresiraju ovaj problem algoritmom \textbf{Action Chunking with Transformers (ACT)}. Ključna inovacija je \textbf{grupiranje akcija} (engl. action chunking) inspirirana istoimenim konceptom iz neuroznanosti koji opisuje kako mozak grupira sekvence akcija u jednu izvršnu jedinicu. Umjesto predviđanja jedne akcije po koraku politika predviđa sekvencu od $k$ budućih akcija odjednom. Modelirajući $\pi_\theta(a_{t:t+k} \mid s_t)$ umjesto $\pi_\theta(a_t \mid s_t)$. Ovo smanjuje efektivni horizont zadatka $k$-puta proporcionalno smanjujući kumulaciju grešaka.
+
+Naivna implementacija grupiranja akcija uzrokuje trzanje robota pri svakom prelasku na novi chunk jer se nova opservacija usvaja naglo svakih $k$ koraka. Autori stoga uvode \textbf{temporalno ansambliranje} (engl. temporal ensembling}) kao mehanizam zaglađivanja. Politika se poziva na svakom vremenskom koraku umjesto svakih $k$ koraka, što rezultira preklapajućim predikcijama za isti vremenski trenutak iz chunkova predviđenih u različitim trenucima. Konačna primijenjena akcija dobiva se vaganim prosjekom svih dostupnih predikcija za taj trenutak:
+%
+\begin{equation}
+    a_t = \frac{\sum_{i} w_i \, \hat{a}_t^{(i)}}{\sum_{i} w_i}, \qquad w_i = \exp(-m \cdot i),
+\end{equation}
+%
+gdje je $i$ starost predikcije (0 za najstariju), a hiperparametar $m$ kontrolira brzinu usvajanja novih opservacija manji $m$ daje veću težinu starijim predikcijama i rezultira glađim, ali sporijim reakcijama na promjene u sceni. Suprotno tome ako je $m$ jednak 1 onda najnoviji chunk dominira gotovo potpuno. Efektivno se ignoriraju starije predikcije. Gibanje je responzivno, ali trzavo jer se pri svakoj novoj predikciji akcija naglo mijenja. Gubi se cijela poanta temporalnog ansembliranja. Autori empirijski pokazuju da su grupiranje akcija i temporalno ansambliranje nužni za postizanje preciznog i glatkog gibanja.
+
+Arhitekturno ACT koristi \textbf{uvjetni varijacijski autoenkoder} (CVAE) koji latentnom varijablom $z$ apsorbira varijabilnost između različitih načina rješavanja zadatka od strane ljudskog operatera. Posebno je relevantan empirijski rezultat ovog rada: ACT postiže uspješnost od 80--90\% na šest zadataka fine manipulacije uz samo \textbf{10 minuta demonstracija ili 50 trajektorija}, što izravno argumentira opseg prikupljanja podataka u ovom radu.
+
+\textbf{Diffusion Policy} \cite{chi2023diffusionpolicy} uvodi pristup koji generiranje akcija formulira kao iterativni proces odšumljivanja (engl. denoising). Umjesto direktnog predviđanja akcije, model kreće od slučajnog šuma i kroz niz koraka iterativno ga pretvara u konkretnu akciju, uvjetovano vizualnom opservacijom. Intuitivno, svaki korak denoising procesa malo poboljšava procjenu akcije na temelju gradijenta distribucije akcija naučene iz demonstracija, sve dok se ne dobije koherentna, izvediva akcija. Ovaj pristup nudi tri ključne prednosti u odnosu na klasični BC. Prvo prirodno modelira \textbf{višemodalne distribucije akcija} tamo gdje klasični BC s MSE gubitkom predviđa fizički neostvarivi prosjek između dva valjana moda izvođenja, difuzijski proces stohastički konvergira prema jednom od njih. Drugo postiže \textbf{stabilnost treninga} zaobilazeći numerički problematičnu procjenu normalizacijske konstante koja uzrokuje nestabilnost energetskih modela poput IBC-a. Treće, izvrsno se skalira na \textbf{visokodimenzionalne sekvence akcija}, što ga čini prirodno prikladnim za kombinaciju s action chunkingom.
+
+Rad uvodi i \textbf{receding horizon kontrolu} s trima horizontima: $T_o$ (broj prošlih opservacija koje ulaze u model), $T_p$ (broj predviđenih akcija) i $T_a$ (broj akcija koje se izvrše prije ponovnog planiranja), pri čemu vrijedi $T_a < T_p$. Model se dakle kontinuirano replanira dok još izvršava prethodno predviđenu sekvencu, balansirajući temporalnu konzistentnost s responzivnošću na promjene u sceni. Za ubrzanje inferencije, autori koriste DDIM~\cite{chi2023diffusionpolicy} kojim se broj denoising koraka smanjuje s 100 na 10, postižući latenciju od 0.1\,s na NVIDIA RTX 3080 GPU-u što je prihvatljivo za real-time robotsku kontrolu. Empirijski, Diffusion Policy nadmašuje tadašnje state-of-the-art metode za prosječno \textbf{46.9\%} na 15 zadataka, s posebno izraženom prednošću na zadacima precizne i višemodalne kontrole. Rad također empirijski potvrđuje superiornost pozicijskim upravljanjem nad brzinskim upravljanjem te je u ovom radu model predviđa 6D pozu TCP-a (engl. tool center pose). Još jedan benefit pozicijske kontrole jeste da on manje pati od kumulativnih grešaka. 
+
+Oba opisana rada predstavljaju izravne arhitekturne prethodnike modela korištenog u ovom diplomskom radu. ACT-ov princip action chunkinga te difuzijska akcijska glava i receding horizon kontrola iz Diffusion Policya integrirani su u $\pi_0$ (OpenPi) model~\cite{black2024pi0} koji služi kao osnova ForceVLA arhitekture.
+
+\section{Transformer model}
 
 Dominantni modeli za obradu sekvenci, poput prijevoda teksta, prije transformera su se oslanjali na rekurentne neuronske mreže (RNN, LSTM). Glavni problem tih arhitektura je sekvencijalne prirode tj. svaki korak ovisi o prethodnom, što onemogućuje paralelizaciju i otežava učenje dugoročnih ovisnosti. Istraživači iz Google-a 2017. godine predstavili su novu arhitekturu neuronskih modela za obradu sekvenci zvanu transformer, koja se temelji isključivo na mehanizmu pažnje (eng. attention), bez ikakve rekurencije ili konvolucija. To omogućuje znatno brže treniranje i bolje rezultate.
 
@@ -43,9 +64,9 @@ Dominantni modeli za obradu sekvenci, poput prijevoda teksta, prije transformera
 
 Model se sastoji od enkodera i dekodera, svaki s po 6 identičnih slojeva. Enkoder obrađuje ulazni tekst, a dekoder generira izlaz korak po korak.
 
-Enkoder se sastoji od stoga N = 6 identičnih slojeva. Svaki sloj ima dva podsloja. Prvi je mehanizam višeglave samopažnje, a drugi je jednostavna, pozicijski potpuno povezana mreža za propagaciju unaprijed. Oko svakog od dva podsloja primjenjujemo rezidualne veze [11], nakon kojih slijedi normalizacija sloja [1]. Drugim riječima, izlaz svakog podsloja je LayerNorm(x + Podsloj(x)), gdje je Podsloj(x) funkcija koju implementira sam podsloj. Kako bi se olakšalo korištenje rezidualnih veza, svi podslojevi u modelu, kao i slojevi ugradnje, proizvode izlaze dimenzije d\_model = 512.
+Enkoder se sastoji od stoga N = 6 identičnih slojeva. Svaki sloj ima dva podsloja. Prvi je mehanizam višeglave samopažnje, a drugi je jednostavna pozicijski potpuno povezana mreža za propagaciju unaprijed. Oko svakog od dva podsloja primjenjujemo rezidualne veze \cite{he2016deep}, nakon kojih slijedi normalizacija sloja \cite{ba2016layernorm}. Drugim riječima izlaz svakog podsloja je LayerNorm(x + Podsloj(x)), gdje je Podsloj(x) funkcija koju implementira sam podsloj. Kako bi se olakšalo korištenje rezidualnih veza svi podslojevi u modelu kao i slojevi ugradnje proizvode izlaze istih dimenzija.
 
-Dekoder se također sastoji od stoga N = 6 identičnih slojeva. Uz dva podsloja prisutna u svakom sloju enkodera, dekoder uvodi i treći podsloj koji provodi višeglavu pažnju nad izlazom stoga enkodera. Kao i u enkoderu, oko svakog podsloja primjenjujemo rezidualne veze, nakon kojih slijedi normalizacija sloja. Također modificiramo podsloj samopažnje u stogu dekodera kako bismo spriječili da pojedine pozicije "vide" naknadne pozicije. To maskiranje, u kombinaciji s činjenicom da su izlazne ugradnje pomaknute za jednu poziciju, osigurava da predviđanja za poziciju i mogu ovisiti isključivo o poznatim izlazima na pozicijama manjim od i.
+Dekoder se također sastoji od stoga N = 6 identičnih slojeva. Uz dva podsloja prisutna u svakom sloju enkodera. Dekoder uvodi i treći podsloj koji provodi višeglavu pažnju nad izlazom enkodera. Kao i u enkoderu oko svakog podsloja primjenjujemo rezidualne veze nakon kojih slijedi normalizacija sloja. Također modificiramo podsloj samopažnje u stogu dekodera kako bismo spriječili da pojedine pozicije "vide" naknadne pozicije u budućnosti. Taj mehanizam se zove maskiranje. Maskiranje osigurava da predikcije za poziciju i mogu ovisiti isključivo o poznatim izlazima na pozicijama manjim od i.
 
 \begin{figure}[h]
     \centering
@@ -64,28 +85,25 @@ Dekoder se također sastoji od stoga N = 6 identičnih slojeva. Uz dva podsloja 
     \end{minipage}
 \end{figure}
 
-Naš mehanizam pažnje nazivamo \textit{Scaled Dot-Product Attention}. Ulaz se sastoji od upita i ključeva dimenzije $d_k$, te vrijednosti dimenzije $d_v$. Računamo skalarni produkt upita sa svim ključevima, dijelimo s $\sqrt{d_k}$, te primjenjujemo softmax kako bismo dobili težine nad vrijednostima:
+Njihov mehanizam pažnje nazivamo skalirana skalarno-produktna pažnja
+ (engl. Scaled Dot-Product Attention). Ulaz se sastoji od upita i ključeva dimenzije $d_k$, te vrijednosti dimenzije $d_v$. Računamo skalarni produkt upita sa svim ključevima, dijelimo s $\sqrt{d_k}$, te primjenjujemo softmax kako bismo dobili težine nad vrijednostima:
 
 \begin{equation}
     \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
 \end{equation}
 
-Za male vrijednosti $d_k$ aditivna pažnja i pažnja skalarnog produkta daju slične rezultate, no za veće vrijednosti $d_k$ skalarni produkti postaju veliki po iznosu, gurajući softmax u područja s malim gradijentima. Zbog toga skaliramo s $\frac{1}{\sqrt{d_k}}$.
+Za male vrijednosti $d_k$ aditivna pažnja \cite{bahdanau2014neural} i pažnja skalarnog produkta daju slične rezultate, no za veće vrijednosti $d_k$ skalarni produkti postaju veliki po iznosu, gurajući softmax u područja s malim gradijentima. Zbog toga se skalira sa $\frac{1}{\sqrt{d_k}}$.
 
 Umjesto jedne funkcije pažnje, model paralelno izvodi 8 glava pažnje u različitim podprostorima reprezentacija. To mu omogućuje da istovremeno "pazi" na različite aspekte rečenice.
 
 Budući da model nema rekurenciju, pozicija riječi u rečenici kodira se sinusoidalnim funkcijama koje se dodaju na ulazne vektore. Pozicijsko kodiranje može se usporediti sa pozicijom filtera (eng. kernel) u konvolucijskim mrežama te budući da transformeri nemaju pomičan filter niti rekurenciju potrebno je na ovaj način modelu dati pozicijsku informaciju.
 
-Samopažnja (self-attention) povezuje sve pozicije u sekvenci s konstantnim brojem operacija O(1), dok rekurentni slojevi zahtijevaju O(n) operacija. To znači kraće "putanje" između udaljenih dijelova teksta i lakše učenje dugoročnih ovisnosti — uz znatno bolju paralelizaciju.
+Samopažnja (self-attention) povezuje sve pozicije u sekvenci s konstantnim brojem operacija O(1), dok rekurentni slojevi zahtijevaju O(n) operacija. To znači kraće "putanje" između udaljenih dijelova teksta i lakše učenje dugoročnih ovisnosti uz znatno bolju paralelizaciju.
 
-Na zadatku engleski → njemački (WMT 2014) postignut je rezultat od 28,4 BLEU, što je više od 2 boda iznad dotadašnjeg najboljeg modela. Na zadatku engleski → francuski postignut je rezultat od 41,8 BLEU - novi rekord za jedan model, treniran za samo 3,5 dana na 8 GPU-ova.
+Na zadatku prijevoda engleski na njemački (WMT 2014) postignut je rezultat od 28.4 BLEU, što je više od 2 boda iznad dotadašnjeg najboljeg modela. Na zadatku prijevoda engleski na francuski postignut je rezultat od 41.0 BLEU - novi rekord za jedan model, treniran za samo 3.5 dana na 8 P100 GPU-ova.
 
-Transformer arhitektura postala je temelj gotovo svim modernim jezičnim modelima — BERT, GPT, T5 i svim ostalim velikim modelima koji su uslijedili. Ključna spoznaja da rekurencija uopće nije potrebna, već samo mehanizam pažnje, bila je u to vrijeme revolucionarna i trajno je promijenila područje umjetne inteligencije.
+Transformer arhitektura postala je temelj gotovo svim modernim jezičnim modelima BERT \cite{devlin2019bert}, GPT \cite{radford2018gpt} i svim ostalim velikim modelima koji su uslijedili. Ključna spoznaja da rekurencija uopće nije potrebna, već samo mehanizam pažnje, bila je u to vrijeme revolucionarna i trajno je promijenila područje umjetne inteligencije.
 
-\section{LLM}
-in general nesto o njima ukratko idk
-\section{VLM - PaliGEMMA}
-baza za Pi0
 \section{VLA - $\pi_0$}
 baza za ForceVLA
 
@@ -107,6 +125,8 @@ baza za ForceVLA
     \label{fig:my_image}
 \end{figure}
 
+\chapter{Motivacija i zadatak}
+
 \chapter{Postava}
 \section{Senzor sile}
 sirovi podatci su vrlo sumoviti i driftaju, EMA filter
@@ -115,6 +135,10 @@ web camera, 3D printani mount
 \section{Kalup}
 - 3D printani kako ne bi prezasitio senzor sile
 \section{ROS}
+
+\section{Robotska ruka}
+- Franka
+- impedance control
 
 \chapter{Demonstracija - skupljanje podataka}
 sinkronizacija podataka, 30Hz, popunjavanja rupa
@@ -133,7 +157,6 @@ vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu o
 Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući je u prvom koraku greška bila 5 koja je eksponencijalno padala u početku te kasnije primjećujemo značajno blaži pad. Prikazani su podatci samo do koraka 30000 iako su trenirani na više koraka. Model sa svim silama je treniran do 50000. i model sa samo Z silom do 100000. koraka. Nakon 30000. koraka oba modela dosegnu grešku oko 0.005 i dalje osciliraju oko te točke tj. možemo reći da su modeli tada konvergirali.
 
 \chapter{Evaluacija}
-\section{Kontrola robota}
 
 \section{Vizualizacija inferencije}
 
@@ -150,22 +173,27 @@ Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući j
     - novi kalup
     - nova orijentacija kalupa?
     - promjena jezicne upute (poliraj vs brusi vs izgladi vs obradi povrsinu)
-\section{Ablacije}
+\section{Modeli}
 - samo Z sila ili sve sile i torqueovi
 
-\chapter{Kritika}
+\section{Kritika}
 - yan le cun difficult of scaling behaviours and lack of explicit planning (npr ode do kraja kalupa i ne vrati se ili poludi kad je u zraku)
 - Dont predict consencuences of their actions
 
 \chapter{Zaključak}
+Future work:
+- prosiriti input da prima vise uzoraka sile - kako bi razumio trendove u sili dal prejako stisce pa da podigne alata i slicno
+- prosiriti input da uz pozu prima i brzinu - kako bi razumio u kojem smjeru ide alat da moze razlikovat iz dataset-a kada se alat nalazi u istoj pozi ali ide u suprotnom smjeru
+- eksperimentirati sa razlicitm vrijednostima hiperparametara - broj eksperata u MoE, Broj eksperata ukljucenih u jednom prolazu (Top-k), broj glava u attention mehanizmu prije MoE, learning rate
+- sintetizirani podatci - napraviti nove epizode uz pomoc gausian suma izmjeniti trenutne epizode kako bi model naucio akcije a ne sum
 
 \bibliography{literatura}
-\bibliographystyle{fer}
+\bibliographystyle{unsrt}
 
 \begin{sazetak}
 Sažetak na hrvatskom jeziku.
 
-\kljucnerijeci{VLA, sila, manipulacija}
+\kljucnerijeci{VLA, imitacijsko ucenje, sila, multi modalnost, manipulacija}
 \end{sazetak}
 
 \engtitle{Multimodal learning of manipulation actions from visual, linguistic and force data}
