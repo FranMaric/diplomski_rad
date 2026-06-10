@@ -1,0 +1,288 @@
+[
+  {
+    "episode": "episode_1_30hz",
+    "first_state": "contact",
+    "durations": {
+      "contact": 17593999872,
+      "retraction": 1106350065,
+      "approach": 599999744
+    }
+  },
+  {
+    "episode": "episode_10_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 600000256,
+      "contact": 11191999744,
+      "retraction": 1008258621
+    }
+  },
+  {
+    "episode": "episode_11_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1200000256,
+      "contact": 11945999872,
+      "retraction": 387479482
+    }
+  },
+  {
+    "episode": "episode_12_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1800000000,
+      "contact": 15758999808,
+      "retraction": 875029039
+    }
+  },
+  {
+    "episode": "episode_13_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1420000256,
+      "contact": 17747999744,
+      "retraction": 99070466
+    }
+  },
+  {
+    "episode": "episode_14_30hz",
+    "first_state": "contact",
+    "durations": {
+      "contact": 32059999488,
+      "retraction": 1407663686,
+      "approach": 1300000256
+    }
+  },
+  {
+    "episode": "episode_15_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 3624999936,
+      "contact": 20063000064,
+      "retraction": 1812864328
+    }
+  },
+  {
+    "episode": "episode_16_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2511000320,
+      "contact": 15405999872,
+      "retraction": 2050058099
+    }
+  },
+  {
+    "episode": "episode_17_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2000000000,
+      "contact": 19514000128,
+      "retraction": 1386907665
+    }
+  },
+  {
+    "episode": "episode_18_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1800000000,
+      "contact": 16294999808,
+      "retraction": 839289695
+    }
+  },
+  {
+    "episode": "episode_19_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 4199999744,
+      "contact": 33371000064,
+      "retraction": 1895984298
+    }
+  },
+  {
+    "episode": "episode_2_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 300999936,
+      "contact": 9787000064,
+      "retraction": 1512173368
+    }
+  },
+  {
+    "episode": "episode_20_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 4300000000,
+      "contact": 19829999872,
+      "retraction": 1404077497
+    }
+  },
+  {
+    "episode": "episode_21_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1399999744,
+      "contact": 17052000000,
+      "retraction": 915025178
+    }
+  },
+  {
+    "episode": "episode_22_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1800000000,
+      "contact": 19134000128,
+      "retraction": 899908921
+    }
+  },
+  {
+    "episode": "episode_23_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 3300000000,
+      "contact": 18659000064,
+      "retraction": 1375048553
+    }
+  },
+  {
+    "episode": "episode_24_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 5400000256,
+      "contact": 19064999680,
+      "retraction": 935774676
+    }
+  },
+  {
+    "episode": "episode_25_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2000000000,
+      "contact": 20135000064,
+      "retraction": 2698777910
+    }
+  },
+  {
+    "episode": "episode_26_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1099999744,
+      "contact": 26300000000,
+      "retraction": 1333459350
+    }
+  },
+  {
+    "episode": "episode_27_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1373000192,
+      "contact": 23128999936,
+      "retraction": 1565145534
+    }
+  },
+  {
+    "episode": "episode_28_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2700000256,
+      "contact": 13937999872,
+      "retraction": 1095544633
+    }
+  },
+  {
+    "episode": "episode_29_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1500000000,
+      "contact": 13738999808,
+      "retraction": 1495280003
+    }
+  },
+  {
+    "episode": "episode_3_30hz",
+    "first_state": "contact",
+    "durations": {
+      "contact": 7137000192,
+      "retraction": 1760984041,
+      "approach": 8503000064
+    }
+  },
+  {
+    "episode": "episode_30_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1700000000,
+      "contact": 15663000064,
+      "retraction": 1003732985
+    }
+  },
+  {
+    "episode": "episode_31_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1996000000,
+      "contact": 15957000192,
+      "retraction": 1013985346
+    }
+  },
+  {
+    "episode": "episode_32_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1500000000,
+      "contact": 14624999936,
+      "retraction": 941898166
+    }
+  },
+  {
+    "episode": "episode_4_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2916999936,
+      "contact": 20483000064,
+      "retraction": 1200344004
+    }
+  },
+  {
+    "episode": "episode_5_30hz",
+    "first_state": "contact",
+    "durations": {
+      "contact": 11698999808,
+      "retraction": 768462462
+    }
+  },
+  {
+    "episode": "episode_6_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1283999744,
+      "contact": 9148000000,
+      "retraction": 1134742094
+    }
+  },
+  {
+    "episode": "episode_7_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 2631000064,
+      "contact": 19796353594,
+      "retraction": 505999616
+    }
+  },
+  {
+    "episode": "episode_8_30hz",
+    "first_state": "contact",
+    "durations": {
+      "contact": 8060999680,
+      "retraction": 939739283
+    }
+  },
+  {
+    "episode": "episode_9_30hz",
+    "first_state": "approach",
+    "durations": {
+      "approach": 1200000256,
+      "contact": 10520999936,
+      "retraction": 313327137
+    }
+  }
+]

@@ -113,9 +113,9 @@ def write(bags_dir: Path):
                     with rosbag.Bag(str(tmp), "w") as outbag:
                         _write_latched(outbag, METADATA_TOPIC, meta_msg, t)
                         with rosbag.Bag(str(bag_path)) as inbag:
-                            for topic, msg, t_msg in inbag.read_messages():
+                            for topic, msg, t_msg in inbag.read_messages(raw=True):
                                 if topic != METADATA_TOPIC:
-                                    outbag.write(topic, msg, t_msg)
+                                    outbag.write(topic, msg, t_msg, raw=True)
                     shutil.move(str(tmp), str(bag_path))
                     print(f"{prefix} OK    {bag_name} (overwrite)")
                 except Exception:

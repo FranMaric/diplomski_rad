@@ -1,0 +1,231 @@
+=== episode_1_30hz ===
+Duration: 19.300 s
+First state: contact
+  approach       0.600 s  (  3.1%)
+  contact       17.594 s  ( 91.2%)
+  retraction     1.106 s  (  5.7%)
+
+=== episode_10_30hz ===
+Duration: 12.800 s
+First state: approach
+  approach       0.600 s  (  4.7%)
+  contact       11.192 s  ( 87.4%)
+  retraction     1.008 s  (  7.9%)
+
+=== episode_11_30hz ===
+Duration: 13.533 s
+First state: approach
+  approach       1.200 s  (  8.9%)
+  contact       11.946 s  ( 88.3%)
+  retraction     0.387 s  (  2.9%)
+
+=== episode_12_30hz ===
+Duration: 18.434 s
+First state: approach
+  approach       1.800 s  (  9.8%)
+  contact       15.759 s  ( 85.5%)
+  retraction     0.875 s  (  4.7%)
+
+=== episode_13_30hz ===
+Duration: 19.267 s
+First state: approach
+  approach       1.420 s  (  7.4%)
+  contact       17.748 s  ( 92.1%)
+  retraction     0.099 s  (  0.5%)
+
+=== episode_14_30hz ===
+Duration: 34.768 s
+First state: contact
+  approach       1.300 s  (  3.7%)
+  contact       32.060 s  ( 92.2%)
+  retraction     1.408 s  (  4.0%)
+
+=== episode_15_30hz ===
+Duration: 25.501 s
+First state: approach
+  approach       3.625 s  ( 14.2%)
+  contact       20.063 s  ( 78.7%)
+  retraction     1.813 s  (  7.1%)
+
+=== episode_16_30hz ===
+Duration: 19.967 s
+First state: approach
+  approach       2.511 s  ( 12.6%)
+  contact       15.406 s  ( 77.2%)
+  retraction     2.050 s  ( 10.3%)
+
+=== episode_17_30hz ===
+Duration: 22.901 s
+First state: approach
+  approach       2.000 s  (  8.7%)
+  contact       19.514 s  ( 85.2%)
+  retraction     1.387 s  (  6.1%)
+
+=== episode_18_30hz ===
+Duration: 18.934 s
+First state: approach
+  approach       1.800 s  (  9.5%)
+  contact       16.295 s  ( 86.1%)
+  retraction     0.839 s  (  4.4%)
+
+=== episode_19_30hz ===
+Duration: 39.467 s
+First state: approach
+  approach       4.200 s  ( 10.6%)
+  contact       33.371 s  ( 84.6%)
+  retraction     1.896 s  (  4.8%)
+
+=== episode_2_30hz ===
+Duration: 11.600 s
+First state: approach
+  approach       0.301 s  (  2.6%)
+  contact        9.787 s  ( 84.4%)
+  retraction     1.512 s  ( 13.0%)
+
+=== episode_20_30hz ===
+Duration: 25.534 s
+First state: approach
+  approach       4.300 s  ( 16.8%)
+  contact       19.830 s  ( 77.7%)
+  retraction     1.404 s  (  5.5%)
+
+=== episode_21_30hz ===
+Duration: 19.367 s
+First state: approach
+  approach       1.400 s  (  7.2%)
+  contact       17.052 s  ( 88.0%)
+  retraction     0.915 s  (  4.7%)
+
+=== episode_22_30hz ===
+Duration: 21.834 s
+First state: approach
+  approach       1.800 s  (  8.2%)
+  contact       19.134 s  ( 87.6%)
+  retraction     0.900 s  (  4.1%)
+
+=== episode_23_30hz ===
+Duration: 23.334 s
+First state: approach
+  approach       3.300 s  ( 14.1%)
+  contact       18.659 s  ( 80.0%)
+  retraction     1.375 s  (  5.9%)
+
+=== episode_24_30hz ===
+Duration: 25.401 s
+First state: approach
+  approach       5.400 s  ( 21.3%)
+  contact       19.065 s  ( 75.1%)
+  retraction     0.936 s  (  3.7%)
+
+=== episode_25_30hz ===
+Duration: 24.834 s
+First state: approach
+  approach       2.000 s  (  8.1%)
+  contact       20.135 s  ( 81.1%)
+  retraction     2.699 s  ( 10.9%)
+
+=== episode_26_30hz ===
+Duration: 28.733 s
+First state: approach
+  approach       1.100 s  (  3.8%)
+  contact       26.300 s  ( 91.5%)
+  retraction     1.333 s  (  4.6%)
+
+=== episode_27_30hz ===
+Duration: 26.067 s
+First state: approach
+  approach       1.373 s  (  5.3%)
+  contact       23.129 s  ( 88.7%)
+  retraction     1.565 s  (  6.0%)
+
+=== episode_28_30hz ===
+Duration: 17.734 s
+First state: approach
+  approach       2.700 s  ( 15.2%)
+  contact       13.938 s  ( 78.6%)
+  retraction     1.096 s  (  6.2%)
+
+=== episode_29_30hz ===
+Duration: 16.734 s
+First state: approach
+  approach       1.500 s  (  9.0%)
+  contact       13.739 s  ( 82.1%)
+  retraction     1.495 s  (  8.9%)
+
+=== episode_3_30hz ===
+Duration: 17.401 s
+First state: contact
+  approach       8.503 s  ( 48.9%)
+  contact        7.137 s  ( 41.0%)
+  retraction     1.761 s  ( 10.1%)
+
+=== episode_30_30hz ===
+Duration: 18.367 s
+First state: approach
+  approach       1.700 s  (  9.3%)
+  contact       15.663 s  ( 85.3%)
+  retraction     1.004 s  (  5.5%)
+
+=== episode_31_30hz ===
+Duration: 18.967 s
+First state: approach
+  approach       1.996 s  ( 10.5%)
+  contact       15.957 s  ( 84.1%)
+  retraction     1.014 s  (  5.3%)
+
+=== episode_32_30hz ===
+Duration: 17.067 s
+First state: approach
+  approach       1.500 s  (  8.8%)
+  contact       14.625 s  ( 85.7%)
+  retraction     0.942 s  (  5.5%)
+
+=== episode_4_30hz ===
+Duration: 24.600 s
+First state: approach
+  approach       2.917 s  ( 11.9%)
+  contact       20.483 s  ( 83.3%)
+  retraction     1.200 s  (  4.9%)
+
+=== episode_5_30hz ===
+Duration: 12.467 s
+First state: contact
+  contact       11.699 s  ( 93.8%)
+  retraction     0.768 s  (  6.2%)
+
+=== episode_6_30hz ===
+Duration: 11.567 s
+First state: approach
+  approach       1.284 s  ( 11.1%)
+  contact        9.148 s  ( 79.1%)
+  retraction     1.135 s  (  9.8%)
+
+=== episode_7_30hz ===
+Duration: 22.933 s
+First state: approach
+  approach       2.631 s  ( 11.5%)
+  contact       19.796 s  ( 86.3%)
+  retraction     0.506 s  (  2.2%)
+
+=== episode_8_30hz ===
+Duration: 9.001 s
+First state: contact
+  contact        8.061 s  ( 89.6%)
+  retraction     0.940 s  ( 10.4%)
+
+=== episode_9_30hz ===
+Duration: 12.034 s
+First state: approach
+  approach       1.200 s  ( 10.0%)
+  contact       10.521 s  ( 87.4%)
+  retraction     0.313 s  (  2.6%)
+
+=== SUMMARY — 32 episode(s) ===
+Total annotated duration: 650.450 s
+  approach      67.961 s  ( 10.4%)
+  contact      544.806 s  ( 83.8%)
+  retraction    37.682 s  (  5.8%)
+First state per episode:
+  approach   27 episode(s)  ( 84.4%)
+  contact     5 episode(s)  ( 15.6%)
+
