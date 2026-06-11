@@ -1,5 +1,5 @@
 \documentclass[times, utf8, diplomski]{fer}
-\usepackage{booktabs}
+\usepackage{booktabs, longtable}
 \usepackage{pgfplots}
 \usepackage{graphicx}
 \usepackage{subcaption}
@@ -12,14 +12,14 @@
 \title{Multimodalno učenje manipulacijskih akcija iz vizualnih, jezičnih i taktilnih
 podataka}
 
-\author{Fran Maric}
+\author{Fran Marić}
 
 \maketitle
 
 % Ispis stranice s napomenom o umetanju izvornika rada. Uklonite naredbu \izvornik ako želite izbaciti tu stranicu.
 \izvornik
 
-\zahvala{Najviše se želim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo životnoj podršci i pomoći. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podršci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Želim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih nedostataka u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez čije pomoći ovaj rad ne bi bio moguć. Od njih želim istaknuti asistenta Peru Drobca, asistenta Brunu Marića i mentora Matka Orsaga.}
+\zahvala{Najviše se želim zahvaliti mojim roditeljima Miri i Franji na njihovom odgoju, cijelo životnoj podršci i pomoći. Zahvaljujem se mojoj djevojci Eli na razumijevanju, podršci i motivaciji u najbitnijim trenucima. Zatim se zahvaljujem svojoj sestri Ivi koja je bila velika podrska. Želim se zahvaliti mom prijatelju Hrvoju koji mi je pomogao pri motivaciji i ispunjavanju mojih nedostataka u znanju znanosti o podatcima. Velika zahvala ide direktno svim ljudima iz Larics laboratorija bez čije pomoći ovaj rad ne bi bio moguć. Od njih želim istaknuti asistenta Peru Drobca, višeg asistenta dr. sc. Brunu Marića i mentora prof. dr. sc. Matka Orsaga.}
 
 \tableofcontents
 
@@ -140,11 +140,76 @@ web camera, 3D printani mount
 - Franka
 - impedance control
 
-\chapter{Demonstracija - skupljanje podataka}
-sinkronizacija podataka, 30Hz, popunjavanja rupa
+\chapter{Demonstracija}
+
+\section{Skupljanje podataka}
+
+problem okluzija optitracka treba paziti da se ne pokriju/sakriju markeri
 vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
 
-\chapter{Ucenje}
+------- 
+
+Sirovi prikupljeni podatci nalaze se u \texttt{.mcap} formatu koji je standard za skupljanje ROS2 topic-a. Prikupljanje u tom format je omogućilo korištenje ROS ekosustava koji olakšava prikupljanje i vizualiziranje podataka. 
+
+\begin{table}[h]
+    \centering
+    \caption{ROS 2 topici snimljeni tijekom demonstracija}
+    \label{tab:ros_topics}
+    \begin{tabular}{llr}
+        \toprule
+        \textbf{Naziv topica} & \textbf{Tip poruke} & \textbf{Frekvencija} \\
+        \midrule
+        \texttt{/scene/image\_raw}                & Slika                & 30 Hz  \\
+        \texttt{/wrist/image\_raw}                & Slika                & 15 Hz  \\
+        \texttt{/optoforce\_0}                    & Sila i moment        & 100 Hz  \\
+        \texttt{/vrpn\_mocap/Brusilica/pose}      & Poza                 & 120 Hz \\
+        \texttt{/vrpn\_mocap/Kalup/pose}          & Poza                 & 120 Hz \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+\section{Sinkronizacija i uzorkovanje podataka}
+
+Modalni podatci prikupljeni tijekom demonstracija dolaze na međusobno različitim frekvencijama, što je vidljivo iz tablice \ref{tab:ros_topics}. Senzor sile bilježi mjerenja na približno 100\,Hz, OptiTrack sustav šalje poze na oko 120 Hz, dok jedna kamera radi na 30 Hz, a druga na 15 Hz. Budući da ForceVLA arhitektura zahtijeva sinkronizirani ulaz svih modaliteta na jedinstvenoj vremenskoj osi, sve je topice bilo potrebno uzorkovati na zajedničku frekvenciju od 30Hz. Odabrana frekvencija preuzeta je direktno iz originalnog ForceVLA rada kako bi se izbjeglo nepotrebno eksperimentiranje s hiperparametrom koji je već empirijski validiran.
+
+Za uzorkovanje su korištene različite strategije ovisno o tipu podataka. Kamera blizu hvatišta alata snima na 15 Hz te se naduzorkuje metodom najbližeg susjeda svaki ciljani trenutak dobiva kadar najbliži po vremenu. Kamera s pogledom odozgo snima na 30Hz te je već na ciljanoj frekvenciji, pa se samo usklađuje na zajedničku vremensku os istom metodom. Senzor sile mjeri na približno 100Hz te se poduzorkuje agregiranjem za svaki ciljani trenutak računa se prosjek svih mjerenja unutar vremenskog prozora od $\pm\frac{1}{2}$ periode. Poze alata i kalupa dolaze s OptiTrack sustava na oko 120Hz te se također poduzorkuju. Pri čemu se pozicije agregiraju kao srednja vrijednost u xyz prostoru, a rotacije kao srednja vrijednost u prostoru svih trodimenzionalnih rotacija.
+
+Tijekom obrade snimljenih demonstracija uočen je dodatni problem: u pojedinim \texttt{.mcap} datotekama pojavile su se rupe u podacima trajanja jedne sekunde i dulje, bez ikakvih primljenih poruka ni na jednom topicu. Uzrok ovog problema nije u potpunosti razjašnjen, no pretpostavlja se da je računalo tijekom snimanja bilo pod visokim opterećenjem uzrokovanim istovremenim primanjem podataka s više mrežnih izvora (kamere, OptiTrack, senzor sile putem ROS2 mreže). Što je povremeno rezultiralo kašnjenjem ili gubitkom poruka. Skripta za uzorkovanje proširena je stoga korakom popunjavanja rupa koji prije uzorkovanja, detektira intervale između uzastopnih poruka dulje od jednog očekivanog perioda te ih popunjava sintetičkim porukama interpoliranim između rubnih vrijednosti.
+
+Osim računalnog opterećenja, potencijalni izvor grešaka u podatcima je i okluzija markera na alatu. OptiTrack sustav za praćenje pozicije oslanja se na infracrvene markere pričvršćene na brusilicu i kalup. Budući da demonstrator drži alat rukom postoji mogućnost da rukom ili dijelom tijela zakloni dio markera što uzrokuje povremeni gubitak ili degradaciju praćenja pozicije. Ovu pojavu bilo je potrebno imati na umu tijekom snimanja i minimizirati je odgovarajućim načinom držanja alata.
+
+\section{Transformacija poze alata u koordinatni sustav kalupa}
+
+U sirovom skupu podataka dostupne su dvije poze: poza alata i poza kalupa. Obje su izražene u globalnom koordinatnom sustavu OptiTrack-a. Za treniranje modela koristi se samo jedna poza, a to je poza alata izražena u koordinatnom sustavu kalupa.
+
+Motivacija za ovu transformaciju leži u prirodi zadatka. Brušenje je definirano relativnim gibanjem alata u odnosu na kalup, a ne u odnosu na neku globalnu referentnu točku. Da je poza alata ostala izražena u globalnom koordinatnom sustavu, model bi trebao implicitno naučiti vezu između apsolutnih koordinata u prostoru i površine kalupa. S obzirom na malu veličinu podataka od svega 10 minuta, ovakvo generaliziranje gotovo sigurno ne bi bilo moguće.
+
+\section{LeRobot format podataka}
+
+Robotički skupovi podataka po svojoj prirodi znatno su kompleksniji od klasičnih skupova podataka u strojnom učenju. Dok se primjerice skup podataka za klasifikaciju slika sastoji od jednostavnih parova slika i oznaka, robotički podaci su višemodalni (slike, stanja zglobova, sile, akcije), vremenski sekvencijalni, organizirani u epizode i visokodimenzionalni. Ova kompleksnost dugo je predstavljala prepreku za dijeljenje i ponovnu upotrebu podataka između istraživačkih skupina.
+
+LeRobot \cite{cadene2024lerobot} format skupa podataka razvila je tvrtka Hugging Face s ciljem standardizacije pohrane i dijeljenja robotičkih demonstracija. Format je stekao široku prihvaćenost u istraživačkoj zajednici zahvaljujući svojoj fleksibilnosti te opsežnoj kolekciji dostupnih modela i skupova podataka na Hugging Face platformi. Koriste ga, između ostalih, Nvidijev model GR00T N1 te brojni radovi koji se oslanjaju na OpenPi i ForceVLA arhitekture, uključujući i ovaj rad.
+
+Podatci su interno pohranjeni u dva komplementarna formata. Numerički podatci stanja robota, akcije i ostala senzorska mjerenja pohranjuju se u \textit{Parquet} datoteke koje se učitavaju kao Hugging Face \texttt{Dataset} objekt, čime je osigurana izravna kompatibilnost s PyTorch ekosustavom. Slikovni podatci pohranjuju se kao \textit{MP4} video datoteke, što u usporedbi s pohranom pojedinih sličica rezultira drastičnim smanjenjem zauzeća pohrane. Svaka epizoda opisana je metapodatcima koji uključuju tekstualni opis zadatka, vrstu robota i frekvenciju uzorkovanja, što omogućuje pretraživanje i indeksiranje skupova podataka na Hugging Face platformi.
+
+Nakon uzorkovanja i transformacije poze alata u koordinatni sustav kalupa, podatci su pohranjeni u \texttt{.mcap} datoteke koje su zatim pretvorene u LeRobot format kako bi bile kompatibilne s ForceVLA trening infrastrukturom. Svaka \texttt{.mcap} datoteka odgovara jednoj epizodi demonstracije.
+
+Vektor stanja (\texttt{observation.state}) dimenzije 13 sastoji se od šest komponenti poze alata (tri translacije i tri Eulerova kuta), jedne komponente grippera koja je uvijek nula budući da je umjesto grippera montirana brusilica tj. brusilica se ne koristi, te šest komponenti mjerenja sile i momenta senzora. Vektor akcije (\texttt{action}) dimenzije 7 sastoji se od šest komponenti poze alata u sljedećem vremenskom koraku i komponente grippera. Akcija je dakle definirana kao apsolutna poza TCP-a u koordinatnom sustavu kalupa u trenutku $t+1$.
+
+Rotacija je pohranjena kao tri Eulerova kuta umjesto kvaterniona. Kvaternionska reprezentacija zahtijevala bi četiri komponente dok Eulerovi kutevi to kodiraju u tri komponente. Treba napomenuti da Eulerovi kutevi pate od problema Gimbalnog zaključavanja (engl. gimbal lock). Budući da se brušenje odvija u relativno ograničenom prostoru kutova ovaj problem u praksi nije bio značajan.
+
+Slikovni podatci s obje kamere kodirani su u \texttt{MP4} video datoteke. Svaka kamera pohranjena je kao zasebna video datoteka po epizodi. Numerički podatci (stanje, akcija, metapodatci) pohranjeni su u \texttt{Parquet} datoteke s HuggingFace \texttt{datasets} shemom kako bi bili izravno kompatibilni s PyTorch podatkovnim slojem LeRobot biblioteke. Konverzijom iz \texttt{.mcap} ROS formata u LeRobot veličina skupa podataka promjenila se sa 36GB na 232MB što je velika razlika koja pokazuje optimiziranost LeRobot kompresije.
+
+Konačni skup podataka dostupan je javno na HuggingFace platformi pod imenom fran-vk/force\_vla i sastoji se od 32 epizode demonstracija brušenja kalupa s ukupno dvije varijante: model koji prima sva mjerenja senzora sile (sila i moment po svim osima, ukupno 6 komponenti) te model koji prima samo komponentu sile duž osi $z$ koja je dominantna u zadatku brušenja.
+
+\section{Analiza podataka}
+
+Obrađeni podatci u sebi sadržavaju informacije o 6D pozi vrha alata u koordinatnom sustavu kalupa, 6D sile senzora ispod samog kalupa koja uključuje translacijske sile i rotacijske momente, slike sa kamere iz ptičje perspektive te slike se kamere montirane na alatu koja pobliže gleda u alat. Podatci se nalaze u formatu epizoda. Jedna epizoda je jednaka jednoj demontraciji stručnjaka. Cijeli skup podataka sadrži 32 epizode sa ukupnim trajanjem od 10 minuta i 50 sekundi. Najkraća epizoda traje 9 sekundi dok najdulja epizoda traje 39 sekundi što ukazuje na varijacije podataka. Prosječno trajanje epizode je 20.3 sekundi.
+
+U tablici 5.1 su uključena mjerenja sile samo za Z komponentu sile koja je najbitnija jer je ona približno jednaka sili normale na plohu kalupa koju alat brusilice proizvodi tijekom kontakta sa kalupom. Bitno je naglasiti da u mjerenjima u tablici 5.1 su uključene sile samo tijekom kontakta alata brusilice i kalupa. Dakle sila dok je brusilica u zraku se ne uračunava u tablici jer nam ona prestavlja samo buku. Većinu vremena snimljenih podataka brusilica je u kontaktu sa kalupom, a to čini 84\% vremena skupa podataka. Dakle u tablici je izostavljeno samo 16\% nerelevantnih uzoraka sile.
+
+\input{graphs/contact_forces_table}
+
+\chapter{Učenje}
 
 \section{Arhitektura mreze}
 \section{Reprezentacija akcije}
