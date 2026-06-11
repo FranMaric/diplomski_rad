@@ -1,0 +1,55 @@
+\renewcommand{\figurename}{Graf}
+
+\begin{figure}[h]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=\textwidth,
+            height=7cm,
+            xlabel={Epizoda},
+            ylabel={Sila (N)},
+            xmin=0.5, xmax=32.5,
+            xtick={1,4,8,12,16,20,24,28,32},
+            grid=major,
+            grid style={dashed, gray!30},
+            legend pos=north west,
+            legend style={font=\small},
+            mark size=1.5pt,
+        ]
+
+        % Max
+        \addplot[color=red, mark=triangle*, mark options={fill=red}] coordinates {
+            (1,1.93)(2,2.49)(3,0.91)(4,1.48)(5,1.09)(6,1.93)(7,2.33)(8,1.48)
+            (9,1.95)(10,3.30)(11,1.80)(12,2.70)(13,2.07)(14,2.01)(15,1.47)
+            (16,2.14)(17,3.74)(18,3.33)(19,2.95)(20,5.29)(21,4.48)(22,5.31)
+            (23,4.41)(24,5.97)(25,5.34)(26,2.69)(27,3.33)(28,1.22)(29,3.45)
+            (30,3.26)(31,2.75)(32,1.72)
+        };
+        \addlegendentry{Maksimum}
+
+        % Mean
+        \addplot[color=blue, mark=*, mark options={fill=blue}] coordinates {
+            (1,0.71)(2,1.32)(3,0.27)(4,0.58)(5,0.19)(6,1.22)(7,0.97)(8,0.15)
+            (9,0.58)(10,1.46)(11,0.55)(12,1.11)(13,1.18)(14,0.87)(15,0.27)
+            (16,0.55)(17,1.44)(18,1.50)(19,1.61)(20,3.22)(21,2.81)(22,3.40)
+            (23,3.07)(24,3.72)(25,2.95)(26,1.16)(27,1.65)(28,0.25)(29,1.61)
+            (30,1.50)(31,1.39)(32,0.64)
+        };
+        \addlegendentry{Srednja vrijednost}
+
+        % Min
+        \addplot[color=green!60!black, mark=square*, mark options={fill=green!60!black}] coordinates {
+            (1,-0.43)(2,0.00)(3,-0.69)(4,-0.69)(5,-1.47)(6,0.00)(7,-0.20)(8,-1.05)
+            (9,-1.15)(10,-0.54)(11,-0.94)(12,-0.67)(13,-0.14)(14,-0.45)(15,-1.37)
+            (16,-1.21)(17,0.00)(18,0.27)(19,0.17)(20,1.70)(21,1.73)(22,1.54)
+            (23,1.94)(24,1.83)(25,1.54)(26,-0.44)(27,-0.98)(28,-0.76)(29,-0.06)
+            (30,-0.67)(31,-0.22)(32,-0.38)
+        };
+        \addlegendentry{Minimum}
+
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Statistike Z-sile u fazi kontakta po epizodi.}
+    \label{fig:contact_forces}
+\end{figure}
+\renewcommand{\figurename}{Slika}  % vrati nazad za ostale slike

@@ -205,9 +205,24 @@ Konačni skup podataka dostupan je javno na HuggingFace platformi pod imenom fra
 
 Obrađeni podatci u sebi sadržavaju informacije o 6D pozi vrha alata u koordinatnom sustavu kalupa, 6D sile senzora ispod samog kalupa koja uključuje translacijske sile i rotacijske momente, slike sa kamere iz ptičje perspektive te slike se kamere montirane na alatu koja pobliže gleda u alat. Podatci se nalaze u formatu epizoda. Jedna epizoda je jednaka jednoj demontraciji stručnjaka. Cijeli skup podataka sadrži 32 epizode sa ukupnim trajanjem od 10 minuta i 50 sekundi. Najkraća epizoda traje 9 sekundi dok najdulja epizoda traje 39 sekundi što ukazuje na varijacije podataka. Prosječno trajanje epizode je 20.3 sekundi.
 
-U tablici 5.1 su uključena mjerenja sile samo za Z komponentu sile koja je najbitnija jer je ona približno jednaka sili normale na plohu kalupa koju alat brusilice proizvodi tijekom kontakta sa kalupom. Bitno je naglasiti da u mjerenjima u tablici 5.1 su uključene sile samo tijekom kontakta alata brusilice i kalupa. Dakle sila dok je brusilica u zraku se ne uračunava u tablici jer nam ona prestavlja samo buku. Većinu vremena snimljenih podataka brusilica je u kontaktu sa kalupom, a to čini 84\% vremena skupa podataka. Dakle u tablici je izostavljeno samo 16\% nerelevantnih uzoraka sile.
+Na grafu 5.2 i u tablici 5.1 su uključena mjerenja sile samo za Z komponentu sile koja je najbitnija jer je ona približno jednaka sili normale na plohu kalupa koju alat brusilice proizvodi tijekom kontakta sa kalupom. Bitno je naglasiti da u mjerenjima u tablici 5.1 su uključene sile samo tijekom kontakta alata brusilice i kalupa. Dakle sila dok je brusilica u zraku se ne uračunava u tablici jer nam ona prestavlja samo buku. Većinu vremena snimljenih podataka brusilica je u kontaktu sa kalupom, a to čini 84\% vremena skupa podataka. Dakle u tablici je izostavljeno samo 16\% nerelevantnih uzoraka sile.
 
 \input{graphs/contact_forces_table}
+
+\input{graphs/contact_forces_graph}
+
+Promatrajući graf 5.1 možemo primjetiti da se sile kreću u rasponu od -1.5 do 6 N. Negativne sile su neželjene budući da su one uzrokovane šumom senzora sile te bi fizikalno značile da netko podiže kalup umjesto da vrši silu na kalup što jednostavno nije slučaj. Isto tako se primjećuje povečanje sile od epizode broj 20 pa nadalje zbog korištenja metalne četke kao alata koja je pružala značajno veći otpor i sukladno tome proizvodila veću silu. Prijašnja četka koja se koristila je bila od plastičnih vlakana koja se brzo istrošila tijekom skupljanja podataka te je zato bila potrebna zamjena za metalnu. Sve to se spominje kako bi se ukazalo na neujednačenost i nesavršenstvo podataka zbog ograničenja pravog svijeta.
+
+\renewcommand{\figurename}{Graf}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{images/tool_poses_pointcloud.png}
+    \caption{Raspodjela poza TCP-a u koordinatnom sustavu kalupa. 
+    Boja odgovara gustoći točaka}
+    \label{fig:tool_poses_pointcloud}
+\end{figure}
+
+Na grafu 5.2 možemo viditi prikaz poza koje se nalaze u skupu podataka te također njihovu prostornu gustoću. Većina poza se nalazi pri vrhu kalup jer se tijekom demonstracija na tim dijelovima prolazilo vrlo polako jer označava početak i kraj trajektorije i samog kalupa.
 
 \chapter{Učenje}
 
