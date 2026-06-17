@@ -391,9 +391,9 @@ def main():
         n_inserted = len(msgs_by_topic[topic]) - n_before
         print(f"  {topic}: {n_gaps} gap(s) → inserted {n_inserted} synthetic messages")
 
-    # ── time range: intersection of all topics ────────────────────────────────
-    t_start = max(v[0][0]  for v in raw_by_topic.values())
-    t_end   = min(v[-1][0] for v in raw_by_topic.values())
+    # ── time range: union of all topics ──────────────────────────────────────
+    t_start = min(v[0][0]  for v in raw_by_topic.values())
+    t_end   = max(v[-1][0] for v in raw_by_topic.values())
 
     if t_start >= t_end:
         print("ERROR: no overlapping time range across topics.", file=sys.stderr)
