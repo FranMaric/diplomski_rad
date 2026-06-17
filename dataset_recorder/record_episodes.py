@@ -7,20 +7,35 @@ import termios
 import time
 import tty
 
+"""
+ros2 run usb_cam usb_cam_node_exe --ros-args -p video_device:=/dev/video0 -p camera_name:=wrist_camera --remap __ns:=/wrist_camera
+ros2 run usb_cam usb_cam_node_exe --ros-args -p video_device:=/dev/video2 -p camera_name:=scene_camera --remap __ns:=/scene_camera
+ros2 run optoforce_wrapper optoforce_node
+ros2 launch dataset_recorder/mocap_with_rotation.launch.py
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml 
+"""
+
 TOPICS = [
     "/optoforce_0",
     # "/optoforce_0/wrench_filtered",
     # "/force_estimation",
-    "/vrpn_mocap/Brusilica/pose",
-    "/vrpn_mocap/Kalup/pose",
-    "/camera_info",
-    "/image_raw",
-    "/camera/camera/color/image_raw",
-    "/camera/camera/color/camera_info",
+    "/vrpn_mocap_rotated/Brusilica/pose",
+    "/vrpn_mocap_rotated/Kalup/pose",
+    "/scene_camera/image_raw",
+    "/scene_camera/camera_info",
+    "/wrist_camera/image_raw",
+    "/wrist_camera/camera_info",
     # "/kalup_cep",
 ]
 
-BAGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bags")
+BAGS_DIR_NAME = "kalup_test_bags"
+BAGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), BAGS_DIR_NAME)
+
+def reset_terminal():
+    fd = sys.stdout.fileno()
+    attrs = termios.tcgetattr(fd)
+    attrs[1] |= termios.OPOST  # re-enable \n -> \r\n translation
+    termios.tcsetattr(fd, termios.TCSANOW, attrs)
 
 
 def getch():
@@ -58,7 +73,7 @@ def record_episode(episode_num):
     env["ROS_DOMAIN_ID"] = "6"
 
     print(f"Recording episode_{episode_num} -> {bag_path}")
-    proc = subprocess.Popen(cmd, env=env)
+    proc = subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return proc
 
 
@@ -67,11 +82,13 @@ def check_topics():
     env["ROS_DOMAIN_ID"] = "6"
     print("Checking available topics...")
     try:
-        result = subprocess.run(["ros2", "topic", "list"], capture_output=True, text=True, env=env, timeout=10)
+        result = subprocess.run(["ros2", "topic", "list"], capture_output=True, text=True, env=env, timeout=10, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
+        reset_terminal()
         print("ERROR: 'ros2 topic list' timed out. Is ROS 2 running?")
         sys.exit(1)
 
+    reset_terminal()
     available = set(result.stdout.splitlines())
     missing = [t for t in TOPICS if t not in available]
 
@@ -87,7 +104,7 @@ def check_topics():
 def main():
     os.makedirs(BAGS_DIR, exist_ok=True)
     check_topics()
-    episode = 15
+    episode = 1
 
     print("Episode recorder ready. Press SPACE to start/stop episodes, ESC/Ctrl+C to quit.")
 
@@ -104,6 +121,7 @@ def main():
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
+        reset_terminal()
         duration = time.monotonic() - t_start
         total_duration += duration
         print(f"episode_{episode} saved.  Duration: {duration:.1f}s  |  Total: {total_duration:.1f}s")
