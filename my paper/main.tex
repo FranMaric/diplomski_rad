@@ -3,6 +3,8 @@
 \usepackage{pgfplots}
 \usepackage{graphicx}
 \usepackage{subcaption}
+\usepackage{float}
+
 \pgfplotsset{compat=1.18}
 
 \begin{document}
@@ -127,27 +129,88 @@ baza za ForceVLA
 
 \chapter{Motivacija i zadatak}
 
+U ovom radu razmatran je zadatak brušenja kalupa i ravnih ploha, klasičan primjer kontaktno bogate manipulacije. Alat mora pratiti rub kalupa s preciznošću na razini milimetara dok kontaktna sila mora ostati unutar uskog raspona: premala sila ne brusi, prevelika oštećuje kalup. Predmet brušenja je u ovom radu fiksiran, a akcije su definirane apsolutno u njegovom koordinatnom sustavu, pa model ne generalizira na varijacije njegove poze. Ovo nije tehnički kompromis, već odraz prirode zadatka u usporedivim industrijskim postrojenjima predmet brušenja u pravilu je čvrsto pričvršćen, pa takva generalizacija u praksi nije potrebna. Fokus rada je stoga na sposobnosti modela da nauči fine, kontaktno-osjetljive korekcije trajektorije, koje se ne mogu svesti na jednostavno geometrijsko praćenje putanje niti unaprijed programirati ručno podešenom impedance kontrolom.
+
+Ovakva priroda zadatka izravno motivira izbor arhitekture korištene u ovom radu. Klasično bihevioralno kloniranje pati od problema kumulativnih grešaka, posebno izraženog u zadatcima fine manipulacije. ACT \cite{zhao2023aloha} ovo adresira grupiranjem akcija (action chunking), čime se povećava efektivni horizont predikcije i smanjuje kumulacija grešaka, dok temporalno ansambliranje uvedeno u istom radu rješava trzanje robota pri prelasku između susjednih chunkova. Diffusion Policy \cite{chi2023diffusionpolicy} generiranje akcija formulira kao iterativni proces odšumljivanja, čime prirodno modelira višemodalne distribucije akcija i bolje skalira na visokodimenzionalne sekvence akcija nego klasična regresija. Bez ovih mehanizama isprobanih u sklopu ovog rada gibanje robota u stvarnom svijetu bilo je u praksi neupotrebljivo što potvrđuje nalaze oba spomenuta rada.
+
+ACT i Diffusion Policy izravni su arhitekturni prethodnici modela $\pi_0$ \cite{black2024pi0} koji oba principa integrira u predtreniranu vizualno-jezično-akcijsku (VLA) arhitekturu. $\pi_0$ pak služi kao osnova modela ForceVLA koji ovaj temelj proširuje mehanizmom mješavine eksperata (engl. Mixture of Experts, MoE) i mjerenjima sile kao dodatnim ulaznim modalitetom. Upravo je ta proširenost taktilnom percepcijom razlog zbog kojeg je ForceVLA odabran kao temeljna arhitektura ovog rada: uspješnost kontakta u brušenju (je li alat prislonjen na kalup prejako, preslabo ili uopće nije u kontaktu) često se ne može pouzdano razaznati iz slike, dok je iz mjerenja sile ta informacija izravno dostupna.
+
+Doprinos ovog rada nije nova arhitektura, već primjena i evaluacija postojeće ForceVLA arhitekture na novom, vlastito prikupljenom skupu podataka temeljenom na slobodnim ljudskim demonstracijama snimljenima sustavom OptiTrack. Bitna razlika u odnosu na većinu VLA radova jest i to da ovaj rad ne koristi gripper: alat za brušenje rigidno je montiran na krajnji efektor robota umjesto njega. Većina postojećih VLA radova bavi se manipulacijom predmeta kroz problem graspinga (hvatanje, premještanje, slaganje objekata) dok ovaj rad VLA pristup primjenjuje na zadatak kontinuirane kontrole alata bez grippera osjetljive na silu. Cilj je pokazati da je VLA paradigma primjenjiva i izvan uobičajenog graspping okvira. Konkretno, rad istražuje koliko mjerenje sile doprinosi kvaliteti naučenog ponašanja, je li za to potreban pun šestodimenzionalni vektor sile i momenta ili je dominantna komponenta dovoljna, te hoće li mehanizam mješavine eksperata razviti interpretabilnu specijalizaciju s obzirom na fazu izvođenja zadatka pitanje koje se nadovezuje na širu kritiku imitacijskog učenja, prema kojoj modeli ovog tipa ne planiraju eksplicitno niti razumiju posljedice svojih akcija.
+
+Na temelju navedenog, u ovom radu postavljene su tri hipoteze.
+
+\begin{description}
+    \item[H1 - sila poboljšava konzistentnost kontakta.] Model koji prima mjerenje sile kao ulaz održava konzistentniju kontaktnu silu tijekom brušenja od modela baziranog samo na slici i poziciji. Stanje kontakta izravno je dostupno iz sile dok se iz slike mora procjenjivati što je nepouzdanije.
+
+    \item[H2 - Z komponenta sile je dovoljna.] Model s punim 6D vektorom sile i momenta neće značajno nadmašiti model koji prima samo Z komponentu sile. Z sila približno odgovara normalnoj sili na kalup i time je dominantan signal dok ostalih pet komponenti uglavnom nosi šum ili informaciju redundantnu s vizualnom pozicijom alata.
+
+    \item[H3 - eksperti u MoE sloju specijaliziraju se po fazi zadatka.] Aktivacija eksperata u MoE sloju pokazat će mjerljivu povezanost s fazom zadatka (prilazak, kontakt, povlačenje), jer te faze zahtijevaju kvalitativno različito ponašanje politike. Moguć je i negativan ishod tj. specijalizacija prema lokalnim statistikama ulaza umjesto prema semantičkoj fazi što bi i samo bilo relevantan nalaz s obzirom na kritiku izostanka eksplicitnog planiranja u modelima ovog tipa.
+\end{description}
+
 \chapter{Postava}
-\section{Senzor sile}
-sirovi podatci su vrlo sumoviti i driftaju, EMA filter
-\section{Kamere}
-web camera, 3D printani mount
-\section{Kalup}
-- 3D printani kako ne bi prezasitio senzor sile
-\section{ROS}
+
+U ovom poglavlju će biti spomenuti praktični dio rada tj. fizički postav koji je morao biti razvijen kako bi se mogli prikupljati podatci te kako bi se mogli evaluirati naučeni modeli na njemu samom. Od senzorike i aktuatora korišteni su senzor sile, kamere, optitrack sustav i robotska ruka. Za povezivanje različitih fizičkih dijelova bila je potrebna izrada raznih 3D modela koji su zatim 3D printani pomoću PETG plastike te kasnije korišteni kao nosači senzorike ili brusilice. Sami kalup, koji je jedan od predmeta brušenja, je također 3D printan jer originalni metalni kalup bi zbog svoje velike mase prezasitio senzor sile te je zato pronađena alternativa u 3D printanom kalupu koji je značajno lakši. Isto tako 3D printani kalup je omogućio poseban način montiranja na metalni postav koji se fiksira za linearne vodilice. Vodilice omogućavaju kretanje kalupa samo po Z osi, to je vidljivo na slici 4.3, te se samim time nadamo da ćemo svesti problem sile na jednu dimenziju koji bi potencijalno mogao biti lakši modelu za učenje. Postav i njegove komponente je moguće viditi na slici 4.1., a na slici 4.2 moguće je vidit brusilicu koja je korištena od strane demonstratora i robotske ruke.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{images/franka.jpg}
+    \caption{Prikaz postava}
+    \label{fig:naziv_slike}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/brusilica.jpg}
+        \caption{Brusilica}
+        \label{fig:slika1}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/kalup side view.jpg}
+        \caption{}
+        \label{fig:slika2}
+    \end{minipage}
+\end{figure}
+
+\section{Senzorika}
+
+Za prikupljanje podataka i evaluaciju modela razvijen je postav koji integrira tri vrste senzora: senzor sile, dvije RGB kamere i sustav za optičko praćenje pokreta OptiTrack. Svaki od njih prikuplja podatke o različitom aspektu demonstracije, a zajedno čine multimodalni ulaz korišten u ovom radu.
+
+\subsection{Senzor sile}
+
+Mjerenje kontaktne sile provedeno je senzorom Optoforce montiranim ispod kalupa. Sama lokacija senzora pri tome je vrlo bitna odluka u dizajnu postava. Alternativa bi bila montirati senzor na samu brusilicu, odnosno u ruku demonstratora, no takav pristup bi demonstratoru nametnuo nošenje dodatne mase tijekom snimanja što bi narušilo prirodnost pokreta i lako rezultiralo lošijim, manje konzistentnim demonstracijama. Montiranjem senzora ispod kalupa umjesto na alat osigurano je da demonstrator rukuje alatom u njegovoj izvornoj i neopterećenoj masi, a okruženje pri tome ostaje ponovljivo jer senzor mjeri silu pod identičnim uvjetima neovisno o tome izvodi li zadatak demonstrator ili robot upravljan naučenim modelom. 
+
+Sirova mjerenja dobivena izravno iz senzora pokazala su se izrazito šumovitima i podložnima driftu, što je zahtijevalo dodatnu obradu prije korištenja u treningu modela.
+
+Prvi korak obrade je kalibracija odstupanja (engl. bias calibration). Prvih 500 uzoraka mjerenja prikupljenih na početku svake sesije prosječi se, a dobivena srednja vrijednost zatim se oduzima od svih budućih očitanja tijekom te sesije. Ovim postupkom uklanja se konstantni pomak senzora nastao primjerice zbog vlastite težine montiranog kalupa ili temperaturnog drifta elektronike. Time se osigurava da očitanje nula odgovara stvarnom odsustvu kontaktne sile.
+
+Budući da senzor Optoforce izvorno ne vraća mjerenja izražena u fizikalnim jedinicama sile, nego u proizvoljnim sirovim jedinicama, za pretvorbu u njutne korištena je linearna regresija. Model regresije treniran je na skupu poznatih masa koje su redom postavljane na senzor i izmjerene pri čemu je uz svaku zabilježeno odgovarajuće sirovo očitanje senzora. Na temelju ovih parova dobiven je linearni odnos između sirovih vrijednosti i sile izražene u njutnima (N) koji se zatim primjenjuje na sva naknadna mjerenja tijekom prikupljanja podataka.
+
+\subsection{Kamere}
+
+Za vizualnu percepciju scene korištene su dvije RGB USB web kamere, montirane na 3D printanim nosačima izrađenima posebno za ovaj postav. Prva kamera montirana je na alata na nosač, koji uz kameru nosi i Optitrack markere te pruža pogled iz blizine usmjeren na sam kontakt alata i kalupa. Druga kamera montirana je iznad radnog prostora i pruža širi pogled na cijelu scenu, uključujući položaj kalupa i alata u odnosu na okolinu. Većina sustava koji koriste računalni vid u nekoj mjeri imaju potrebu za vanjskom kalibracijom to jest potreban im je položaj kamere u odnosu na svijet. Bitna stavka ovog sustava jeste da položaji kamera nisu poznati sustavu, već se model prilagodi različitim položajima kamera pomoću samih podataka.
+
+\subsection{OptiTrack}
+
+Sustav OptiTrack korišten je za precizno praćenje pozicije i orijentacije alata i kalupa tijekom prikupljanja demonstracija. Sustav radi na principu triangulacije: reflektivni markeri pričvršćeni na alat i kalup detektiraju se pomoću više kamera postavljenih oko radnog prostora, a njihov položaj u trodimenzionalnom prostoru izračunava se triangulacijom iz više kamerinih perspektiva. Na temelju pozicija pojedinih markera sustav rekonstruira pozu, poziciju i orijentaciju, vrha alata i kalupa u globalnom koordinatnom sustavu.
+
+Treba napomenuti da se OptiTrack koristi isključivo u fazi prikupljanja podataka radi dobivanja referentnih poza potrebnih za treniranje modela. Tijekom inferencije sustav OptiTrack se ne koristi.
 
 \section{Robotska ruka}
-- Franka
-- impedance control
+Za evaluaciju naučenog modela potrebno je fizičko upravljanje pozom brusilice, odnosno izvođenje akcija koje model predviđa na temelju vizualnih, jezičnih i taktilnih opservacija. U tu svrhu korištena je robotska ruka Franka Emika Panda, opremljena prikladnim 3D printanim nosačem za brusilicu montiranim na njeni krajnji efektor umjesto standardnog grippera. Robotska ruka u ovom kontekstu preuzima ulogu koju je tijekom prikupljanja podataka imao ljudski demonstrator. Na temelju izlaza modela koji predviđa sljedeću pozu vrha alata u koordinatnom sustavu kalupa robot izvodi odgovarajuće gibanje u fizičkom prostoru.
+ 
+Za upravljanje samim robotom korišten je \textbf{Cartesian Impedance Controller} iz paketa \texttt{serl\_franka\_controllers}. Ovaj kontroler izvorno je razvijen u okviru SERL-a (Sample-Efficient Robotic Reinforcement Learning), softverskog paketa namijenjenog učenju robotskih politika učenjem potkrepljivanjem izravno na fizičkom robotu, gdje je sigurnost i stabilnost interakcije s okolinom ključan zahtjev. Riječ je o ROS paketu koji upravlja robotom Franka Emika kroz biblioteke libfranka i franka\_ros, a koji pruža kompatibilan, ali precizan kartezijski impedance kontroler namijenjen sigurnom učenju potkrepljivanjem u stvarnom vremenu. Ključna karakteristika ovog kontrolera, relevantna upravo za zadatak fine, kontaktne manipulacije razmatran u ovom radu, jest način na koji istovremeno postiže preciznost i popustljivost: referentna točka impedance kontrolera ograničena je na određenu udaljenost od trenutne poze robota unutar petlje upravljanja u stvarnom vremenu, što omogućuje korištenje visokog pojačanja radi preciznosti bez nastanka prekomjerne sile prilikom kontakta. Ovakvo ponašanje izravno odgovara prirodi zadatka brušenja: robot mora precizno pratiti naučenu trajektoriju, ali istovremeno popustljivo reagirati na neočekivani ili prejak kontakt s kalupom tj. plohom koju brusi, čime se smanjuje rizik oštećenja alata, kalupa ili samog senzora sile tijekom evaluacije naučenog modela.
 
 \chapter{Demonstracija}
 
 \section{Skupljanje podataka}
 
-problem okluzija optitracka treba paziti da se ne pokriju/sakriju markeri
-vecina koristi teleoperaciju dok mi koristimo slobodne pokrete uhvacene pomocu optitracka, izvodenje pokreta
-
-------- 
+Većina današnjih pristupa imitacijskom učenju prikuplja demonstracije putem teleoperacije, gdje demonstrator robotom upravlja posredno, primjerice drugom robotskom rukom ili sustavom za praćenje ruke, dok sam robot izvodi gibanje u stvarnom vremenu tijekom snimanja. U ovom radu odabran je drugačiji pristup: demonstracije su prikupljene snimanjem slobodnih pokreta čovjeka koji izravno, rukom, izvodi zadatak brušenja, dok se poza alata i kalupa bilježi sustavom za optičko praćenje pokreta OptiTrack. Ovakav pristup demonstratoru omogućuje izravnu taktilnu povratnu informaciju iz kontakta alata i kalupa tijekom izvođenja zadatka, što teleoperacija s fizički odvojenim robotom ne pruža na isti način, a istovremeno je tehnički jednostavniji za implementaciju jer ne zahtijeva sinkronizirano upravljanje robotom u stvarnom vremenu tijekom same demonstracije.
+ 
+Korištenje OptiTrack sustava za ovu svrhu pri tome nosi i specifičan rizik. Sustav za praćenje pokreta oslanja se na neprekinutu vidljivost reflektivnih markera, pričvršćenih na alat i kalup, iz perspektive više kamera postavljenih oko radnog prostora. Budući da demonstrator alat drži rukom, postoji stalna mogućnost da ruka ili dio tijela djelomično ili potpuno prekrije pojedine markere, što uzrokuje povremeni gubitak ili degradaciju praćenja pozicije u tim trenutcima. Tijekom snimanja demonstracija bilo je stoga potrebno posebno paziti na način na koji se alat drži, kako bi se okluzija markera minimizirala i osigurala kontinuirana, pouzdana poza alata kroz cijelu epizodu.
 
 Sirovi prikupljeni podatci nalaze se u \texttt{.mcap} formatu koji je standard za skupljanje ROS2 topic-a. Prikupljanje u tom format je omogućilo korištenje ROS ekosustava koji olakšava prikupljanje i vizualiziranje podataka. 
 
@@ -159,14 +222,15 @@ Sirovi prikupljeni podatci nalaze se u \texttt{.mcap} formatu koji je standard z
         \toprule
         \textbf{Naziv topica} & \textbf{Tip poruke} & \textbf{Frekvencija} \\
         \midrule
-        \texttt{/scene/image\_raw}                & Slika                & 30 Hz  \\
-        \texttt{/wrist/image\_raw}                & Slika                & 15 Hz  \\
+        \texttt{/scene\_camera/image\_raw}                & Slika                & 30 Hz  \\
+        \texttt{/wrist\_camera/image\_raw}                & Slika                & 15 Hz  \\
         \texttt{/optoforce\_0}                    & Sila i moment        & 100 Hz  \\
         \texttt{/vrpn\_mocap/Brusilica/pose}      & Poza                 & 120 Hz \\
         \texttt{/vrpn\_mocap/Kalup/pose}          & Poza                 & 120 Hz \\
         \bottomrule
     \end{tabular}
 \end{table}
+
 \section{Sinkronizacija i uzorkovanje podataka}
 
 Modalni podatci prikupljeni tijekom demonstracija dolaze na međusobno različitim frekvencijama, što je vidljivo iz tablice \ref{tab:ros_topics}. Senzor sile bilježi mjerenja na približno 100\,Hz, OptiTrack sustav šalje poze na oko 120 Hz, dok jedna kamera radi na 30 Hz, a druga na 15 Hz. Budući da ForceVLA arhitektura zahtijeva sinkronizirani ulaz svih modaliteta na jedinstvenoj vremenskoj osi, sve je topice bilo potrebno uzorkovati na zajedničku frekvenciju od 30Hz. Odabrana frekvencija preuzeta je direktno iz originalnog ForceVLA rada kako bi se izbjeglo nepotrebno eksperimentiranje s hiperparametrom koji je već empirijski validiran.
@@ -207,14 +271,15 @@ Obrađeni podatci u sebi sadržavaju informacije o 6D pozi vrha alata u koordina
 
 Na grafu 5.2 i u tablici 5.1 su uključena mjerenja sile samo za Z komponentu sile koja je najbitnija jer je ona približno jednaka sili normale na plohu kalupa koju alat brusilice proizvodi tijekom kontakta sa kalupom. Bitno je naglasiti da u mjerenjima u tablici 5.1 su uključene sile samo tijekom kontakta alata brusilice i kalupa. Dakle sila dok je brusilica u zraku se ne uračunava u tablici jer nam ona prestavlja samo buku. Većinu vremena snimljenih podataka brusilica je u kontaktu sa kalupom, a to čini 84\% vremena skupa podataka. Dakle u tablici je izostavljeno samo 16\% nerelevantnih uzoraka sile.
 
+\input{graphs/contact_forces_graph}
+
 \input{graphs/contact_forces_table}
 
-\input{graphs/contact_forces_graph}
 
 Promatrajući graf 5.1 možemo primjetiti da se sile kreću u rasponu od -1.5 do 6 N. Negativne sile su neželjene budući da su one uzrokovane šumom senzora sile te bi fizikalno značile da netko podiže kalup umjesto da vrši silu na kalup što jednostavno nije slučaj. Isto tako se primjećuje povečanje sile od epizode broj 20 pa nadalje zbog korištenja metalne četke kao alata koja je pružala značajno veći otpor i sukladno tome proizvodila veću silu. Prijašnja četka koja se koristila je bila od plastičnih vlakana koja se brzo istrošila tijekom skupljanja podataka te je zato bila potrebna zamjena za metalnu. Sve to se spominje kako bi se ukazalo na neujednačenost i nesavršenstvo podataka zbog ograničenja pravog svijeta.
 
 \renewcommand{\figurename}{Graf}
-\begin{figure}[h]
+\begin{figure}[htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{images/tool_poses_pointcloud.png}
     \caption{Raspodjela poza TCP-a u koordinatnom sustavu kalupa. 
@@ -254,7 +319,7 @@ Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući j
     - nova orijentacija kalupa?
     - promjena jezicne upute (poliraj vs brusi vs izgladi vs obradi povrsinu)
 \section{Modeli}
-- samo Z sila ili sve sile i torqueovi
+- samo Z sila ili sve sile i torqueovi ili skroz bez sile 
 
 \section{Kritika}
 - yan le cun difficult of scaling behaviours and lack of explicit planning (npr ode do kraja kalupa i ne vrati se ili poludi kad je u zraku)
@@ -262,9 +327,13 @@ Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući j
 
 \chapter{Zaključak}
 Future work:
+
 - prosiriti input da prima vise uzoraka sile - kako bi razumio trendove u sili dal prejako stisce pa da podigne alata i slicno
+
 - prosiriti input da uz pozu prima i brzinu - kako bi razumio u kojem smjeru ide alat da moze razlikovat iz dataset-a kada se alat nalazi u istoj pozi ali ide u suprotnom smjeru
+
 - eksperimentirati sa razlicitm vrijednostima hiperparametara - broj eksperata u MoE, Broj eksperata ukljucenih u jednom prolazu (Top-k), broj glava u attention mehanizmu prije MoE, learning rate
+
 - sintetizirani podatci - napraviti nove epizode uz pomoc gausian suma izmjeniti trenutne epizode kako bi model naucio akcije a ne sum
 
 \bibliography{literatura}
