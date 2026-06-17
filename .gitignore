@@ -2,7 +2,12 @@ build/
 install/
 log/
 **/*.mcap
-dataset_recorder/bags/*
+dataset_recorder/bags/
+dataset_recorder/kalup_bags/
+dataset_recorder/kalup_test_bags/
+dataset_recorder/line_bags/
+dataset_recorder/__pycache__/
 dataset_recorder/*.zip
 dataset_recorder/fran__force_vla/
-control-example/bags/*
+dataset_recorder/fran-vk__force_vla/
+control-example/bags/

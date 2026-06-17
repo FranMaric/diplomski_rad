@@ -25,12 +25,16 @@ import rosbag2_py
 from rclpy.serialization import deserialize_message, serialize_message
 from geometry_msgs.msg import PoseStamped
 
-# Mirrors kalup_pose_transformer.py exactly
-_t = [-(0.0277 - 0.006 + 0.03505 + 0.0128), 0.011 + 0.17905, -(0.00925 + 0.076 + 0.01415)]
-TRANSLATION = np.array([_t[0] + 0.0, _t[1] + 0.004, _t[2] + 0.02])
+# Mirrors kalup_pose_transformer.py with slight modifications
+_t = [-(0.0277 - 0.006 + 0.03505 + 0.0128), 
+      0.011 + 0.17905, 
+      -(0.00925 + 0.076 + 0.01415)]
+TRANSLATION = np.array([_t[0] + 0.02, _t[1] - 0.02, _t[2] + 0.04])
 
-KALUP_TOPIC    = '/vrpn_mocap/Kalup/pose'
-BRUSILICA_TOPIC = '/vrpn_mocap/Brusilica/pose'
+ROT_X_NEG90 = Rotation.from_euler('x', -90, degrees=True)
+
+KALUP_TOPIC    = '/vrpn_mocap_rotated/Kalup/pose'
+BRUSILICA_TOPIC = '/vrpn_mocap_rotated/Brusilica/pose'
 OUT_TOPIC      = '/tool_center_pose'
 MSG_TYPE       = 'geometry_msgs/msg/PoseStamped'
 
@@ -122,9 +126,9 @@ def main():
     for i, (ts, data) in enumerate(kalup_raw):
         msg = deserialize_message(data, PoseStamped)
         p, q = msg.pose.position, msg.pose.orientation
-        kalup_ts[i]     = ts
-        kalup_pos[i]    = [p.x, p.y, p.z]
-        kalup_quat[i]   = [q.x, q.y, q.z, q.w]
+        kalup_ts[i]   = ts
+        kalup_pos[i]  = [p.x, p.y, p.z]
+        kalup_quat[i] = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
 
     # ── transform brusilica messages ───────────────────────────────────────────
     print('Transforming ...')
@@ -134,7 +138,7 @@ def main():
         msg = deserialize_message(data, PoseStamped)
         p, q = msg.pose.position, msg.pose.orientation
         p_b = np.array([p.x, p.y, p.z])
-        q_b = np.array([q.x, q.y, q.z, q.w])
+        q_b = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
 
         idx   = nearest_idx(kalup_ts, ts)
         p_cap = cap_center_world(kalup_pos[idx], kalup_quat[idx])

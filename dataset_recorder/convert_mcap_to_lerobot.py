@@ -1,4 +1,7 @@
 """
+After conversion uploading:
+hf upload fran-vk/force_vla . --repo-type dataset --revision no_force
+
 mcap_to_lerobot.py
 ------------------
 Converts ROS 2 Jazzy .mcap recordings to LeRobotDataset (codebase_version=v2.1).
