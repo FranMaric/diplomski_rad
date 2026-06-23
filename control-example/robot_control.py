@@ -10,8 +10,13 @@ VELOCITY_SCALING = 0.2
 SAVE_ACTION_CHUNKS_AS_CSV = False
 MODEL_PROMPT = "sand the mold"
 
+METADATA_TOPIC_MSG = f'{{"prompt": "{MODEL_PROMPT}", "model": "kalup all forces 40000"}}'
+
+
 import rospy, math
 import csv, io
+import json
+import sys
 import subprocess
 import atexit
 import os
@@ -19,6 +24,7 @@ import signal
 import threading
 import tf
 import tf2_ros
+from std_msgs.msg import String
 from geometry_msgs.msg import Pose, PoseStamped, WrenchStamped, TransformStamped, Point
 from visualization_msgs.msg import Marker, MarkerArray
 from sensor_msgs.msg import JointState
@@ -30,6 +36,19 @@ from openpi_client import websocket_client_policy
 from joint_velocity_control import JointVelocityController
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+
+class _NumpyEncoder(json.JSONEncoder):
+	def default(self, obj):
+		if isinstance(obj, np.ndarray):
+			return obj.tolist()
+		if isinstance(obj, (np.integer,)):
+			return int(obj)
+		if isinstance(obj, (np.floating,)):
+			return float(obj)
+		return super().default(obj)
+
+def _dumps(obj):
+	return json.dumps(obj, cls=_NumpyEncoder)
 
 def _quat_to_axis_angle(q_xyzw):
 	"""Quaternion (x,y,z,w) -> 3-vector (axis * angle), shortest-path."""
@@ -549,7 +568,7 @@ def build_observation(env, prompt, robot_controller):
 	
 
 def publish_kalup_transform():
-	T_kalup_to_panda_link0 = _build_pose(0.3208041427954132, -0.04823811340748261, 0.5164062837874686, 0,0,0,0)
+	T_kalup_to_panda_link0 = _build_pose(0.296, -0.159, 0.511, 0,0,0,0)
 
 	broadcaster = tf2_ros.StaticTransformBroadcaster()
 	t = TransformStamped()
@@ -580,14 +599,24 @@ def record_bag():
 		stderr=subprocess.DEVNULL,
 		preexec_fn=os.setsid,
 	)
+	_stopped = [False]
 	def _stop_bag():
+		if _stopped[0]:
+			return
+		_stopped[0] = True
 		try:
 			os.killpg(os.getpgid(bag_proc.pid), signal.SIGINT)
-			bag_proc.wait(timeout=10)
+			bag_proc.wait(timeout=8)
 		except Exception:
-			bag_proc.kill()
+			bag_proc.send_signal(signal.SIGTERM)
+			try:
+				bag_proc.wait(timeout=3)
+			except subprocess.TimeoutExpired:
+				bag_proc.kill()
+		rospy.loginfo("Bag recording stopped.")
 	atexit.register(_stop_bag)
 	rospy.loginfo(f"Bag recording started (pid={bag_proc.pid}).")
+	return _stop_bag
 
 def move_to_kalup_zero(robot_controller):
 	quat = tf.transformations.quaternion_from_euler(0.6, 0, 0)
@@ -608,7 +637,7 @@ def recover_from_errors():
 		'std_msgs/Empty', '{}'
 	])
 
-def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
+def _inference_loop(policy_client, robot_controller, ensembler, stop_event, inference_metadata_pub):
 	"""Background thread: continuously query the policy and push chunks into the ensembler.
 
 	query_step is captured before inference so that chunk[offset] aligns with the
@@ -637,6 +666,9 @@ def _inference_loop(policy_client, robot_controller, ensembler, stop_event):
 			np.savetxt(csv_path, np.array(action_chunk), delimiter=",", header="x,y,z,rx,ry,rz,gripper_width", comments="")
 			chunk_index += 1
 
+		inference_metadata = {k: v for k, v in response.items() if k != "actions"}
+		inference_metadata_pub.publish(_dumps(inference_metadata))
+
 		ensembler.update(action_chunk, query_step=query_step)
 		robot_controller.publish_action_chunk_visualization(action_chunk)
 		rospy.loginfo(f"New chunk registered (queried at step {query_step}, arrived at step {ensembler.step}), infer_ms={infer_ms:.3f}, infer+network_ms={infer_plus_network_time:.3f}")
@@ -653,8 +685,11 @@ def main():
 
 	rospy.loginfo(f"Current EE pose: {robot_controller.get_frame_pose(frame='panda_EE')}")
 
-	input("\n --------- Press Enter to proceed with the script and start recording ---------  \n\n")
-	record_bag()
+	input("\n --------- Press Enter to move to kalup zero and connect to policy server---------  \n\n")
+
+	metadata_pub = rospy.Publisher('/metadata', String, queue_size=1, latch=True)
+	rospy.sleep(0.1)  # let subscriber connections establish before latched publish
+	metadata_pub.publish(METADATA_TOPIC_MSG)
 
 	move_to_kalup_zero(robot_controller)
 
@@ -664,16 +699,24 @@ def main():
 
 	rospy.loginfo("RobotControl node connected to policy server.")
 
-	max_iterations = 15 * REPLAN_STEPS
-	iteration = 0
-
 	# Prime the ensembler with the first chunk, then hand off inference to a background
 	# thread so the execution loop runs at exactly ACTION_RATE regardless of latency.
+	inference_metadata_pub = rospy.Publisher('/inference_metadata', String, queue_size=1, latch=True)
+
+	input("\n --------- Press Enter to start inference and recording ---------  \n\n")
+	stop_bag = record_bag()
+	signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+	rospy.sleep(1)
+
 	rospy.loginfo("Waiting for first policy inference before starting execution...")
 	while not rospy.is_shutdown():
 		observation = build_observation(env=MODEL_ENV, prompt=MODEL_PROMPT, robot_controller=robot_controller)
 		if observation is not None:
-			first_chunk = policy_client.infer(observation)["actions"]
+			first_response = policy_client.infer(observation)
+			first_chunk = first_response["actions"]
+			first_metadata = {k: v for k, v in first_response.items() if k != "actions"}
+			inference_metadata_pub.publish(_dumps(first_metadata))
 			break
 		rospy.sleep(0.05)
 
@@ -687,7 +730,7 @@ def main():
 	stop_event = threading.Event()
 	inference_thread = threading.Thread(
 		target=_inference_loop,
-		args=(policy_client, robot_controller, ensembler, stop_event),
+		args=(policy_client, robot_controller, ensembler, stop_event, inference_metadata_pub),
 		daemon=True,
 	)
 	inference_thread.start()
@@ -703,15 +746,11 @@ def main():
 			else:
 				rospy.logwarn_throttle(1.0, "Ensembler has no actions yet; waiting for inference thread.")
 
-			# iteration += 1
-			# if iteration == max_iterations:
-			# 	rospy.loginfo(f"Completed {max_iterations} steps, exiting for testing.")
-			# 	break
-
 			rate.sleep()
 	except Exception as e:
 		rospy.logerr(f"Exception in execution loop: {e}")
 	finally:
+		stop_bag()
 		stop_event.set()
 		inference_thread.join(timeout=2.0)
 

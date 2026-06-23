@@ -7,7 +7,7 @@
   </include>
 
   <node name="ee_camera" pkg="usb_cam" type="usb_cam_node" output="screen">
-    <param name="video_device"  value="/dev/video0"/>
+    <param name="video_device"  value="/dev/video2"/>
     <param name="camera_name"   value="ee_camera"/>
     <param name="image_width"   value="640"/>
     <param name="image_height"  value="480"/>
@@ -16,7 +16,7 @@
   </node>
 
   <node name="scene_camera" pkg="usb_cam" type="usb_cam_node" output="screen">
-    <param name="video_device"  value="/dev/video2"/>
+    <param name="video_device"  value="/dev/video0"/>
     <param name="camera_name"   value="scene_camera"/>
     <param name="image_width"   value="640"/>
     <param name="image_height"  value="480"/>

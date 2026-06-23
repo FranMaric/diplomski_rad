@@ -13,4 +13,6 @@ rosbag record \
   /tf \
   /tf_static \
   /action_chunk_vis \
+  /metadata \
+  /inference_metadata \
   -O "$BAG_NAME"
