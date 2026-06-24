@@ -18,10 +18,7 @@ Topics expected:
 Usage
 -----
     # Convert all episodes then write metadata
-    python mcap_to_lerobot.py --bags-dir dataset_recorder/bags --repo-id fran/force_vla
-
-    # Regenerate stats + info.json from existing parquets (no re-encoding)
-    python mcap_to_lerobot.py --bags-dir dataset_recorder/bags --repo-id fran/force_vla --fix-stats
+    python3 convert_mcap_to_lerobot.py --bags-dir line_bags --repo-id fran-vk/force_vla
 
 Dependencies
 ------------
@@ -50,12 +47,24 @@ CODEBASE_VERSION = "v2.1"
 
 POSE_TOPIC  = "/tool_center_pose"
 FORCE_TOPIC = "/optoforce_0"
-SCENE_TOPIC = "/camera/camera/color/image_raw"
-WRIST_TOPIC = "/image_raw"
+SCENE_TOPIC = "/scene_camera/image_raw"
+WRIST_TOPIC = "/wrist_camera/image_raw"
 WANTED_TOPICS = {POSE_TOPIC, FORCE_TOPIC, SCENE_TOPIC, WRIST_TOPIC}
 
 STATE_DIM  = 13
 ACTION_DIM = 7
+
+TASK_PROMPT = "sand the line"
+FPS         = 30
+TARGET_H    = 480
+TARGET_W    = 640
+VIDEO_CODEC = "libx264"
+ROBOT_TYPE  = "manipulator"
+
+MCAP_GLOB = (
+    "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_kalup_frame_0.mcap" # with all forces
+    # "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_0_30hz_0_kalup_frame_0_fz_only/episode_*_0_30hz_0_kalup_frame_0_fz_only_0.mcap"
+)
 
 # HuggingFace `datasets` feature spec — must match what load_hf_dataset() expects.
 # Uses Sequence(Value("float32")) which serialises as fixed_size_list in parquet.
@@ -103,6 +112,8 @@ def _ros_image_to_bgr(msg) -> np.ndarray | None:
                             cv2.COLOR_GRAY2BGR)
     if enc == "bayer_rggb8":
         return cv2.cvtColor(np.frombuffer(raw, np.uint8).reshape(h, w), cv2.COLOR_BayerRG2BGR)
+    if enc in ("yuv422_yuy2", "yuyv", "yuy2"):
+        return cv2.cvtColor(np.frombuffer(raw, np.uint8).reshape(h, w, 2), cv2.COLOR_YUV2BGR_YUYV)
     print(f"[WARN] Unsupported encoding: {enc!r}")
     return None
 
@@ -507,23 +518,6 @@ def convert_mcap_list(
     McapToLeRobot.finalise(output_dir=output_dir, fps=fps,
                            task_prompt=task_prompt, robot_type=robot_type)
 
-
-# ===========================================================================
-# CLI
-# ===========================================================================
-
-TASK_PROMPT = "sand the mold"
-FPS         = 30
-TARGET_H    = 480
-TARGET_W    = 640
-VIDEO_CODEC = "libx264"
-ROBOT_TYPE  = "manipulator"
-
-MCAP_GLOB = (
-    # "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_kalup_frame_0.mcap" # with all forces
-    "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_0_30hz_0_kalup_frame_0_fz_only/episode_*_0_30hz_0_kalup_frame_0_fz_only_0.mcap"
-)
-# episode_1/episode_1_0_30hz/episode_1_0_30hz_0_kalup_frame/episode_1_0_30hz_0_kalup_frame_0_fz_only/episode_1_0_30hz_0_kalup_frame_0_fz_only_0.mcap
 
 def _discover_mcaps(bags_dir: Path) -> list[Path]:
     mcaps = sorted(

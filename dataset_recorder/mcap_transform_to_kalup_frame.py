@@ -33,20 +33,22 @@ TRANSLATION = np.array([_t[0] + 0.02, _t[1] - 0.02, _t[2] + 0.04])
 
 ROT_X_NEG90 = Rotation.from_euler('x', -90, degrees=True)
 
+MCAP_GLOB = "episode_*/episode_*_30hz/episode_*_30hz_0.mcap"
+
 KALUP_TOPIC    = '/vrpn_mocap_rotated/Kalup/pose'
 BRUSILICA_TOPIC = '/vrpn_mocap_rotated/Brusilica/pose'
 OUT_TOPIC      = '/tool_center_pose'
 MSG_TYPE       = 'geometry_msgs/msg/PoseStamped'
 
 
-def find_mcap(path: Path) -> Path:
-    if path.is_file() and path.suffix == '.mcap':
-        return path
-    if path.is_dir():
-        mcaps = sorted(path.glob('*.mcap'))
-        if mcaps:
-            return mcaps[0]
-    raise FileNotFoundError(f'No .mcap file found at: {path}')
+def _discover_mcaps(bags_dir: Path) -> list[Path]:
+    mcaps = sorted(
+        bags_dir.glob(MCAP_GLOB),
+        key=lambda p: int(p.parts[len(bags_dir.parts)].split("_")[1]),
+    )
+    print("[" + ",\n".join(f'  "{p}"' for p in mcaps) + "\n]")
+    print(f"Found {len(mcaps)} episodes under {bags_dir}")
+    return mcaps
 
 
 def cap_center_world(pos: np.ndarray, quat: np.ndarray) -> np.ndarray:
@@ -75,113 +77,109 @@ def main():
     parser = argparse.ArgumentParser(
         description='Re-express brusilica pose in kalup frame and write to new MCAP bag.'
     )
-    parser.add_argument('input',  type=Path, help='Input bag directory or .mcap file')
-    parser.add_argument('-o', '--output', type=Path, default=None,
-                        help='Output bag directory (default: <stem>_kalup_frame)')
+    parser.add_argument('input', type=Path, help='Bags root directory (searched with MCAP_GLOB)')
     args = parser.parse_args()
 
-    mcap_in = find_mcap(args.input.resolve())
-    out_dir = args.output.resolve() if args.output else mcap_in.parent / f'{mcap_in.stem}_kalup_frame'
+    conv = rosbag2_py.ConverterOptions('', '')
 
-    if out_dir.exists():
-        sys.exit(f'ERROR: output already exists: {out_dir}')
+    for mcap_in in _discover_mcaps(args.input.resolve()):
+        out_dir = mcap_in.parent / f'{mcap_in.stem}_kalup_frame'
 
-    # ── read all messages ──────────────────────────────────────────────────────
-    print(f'Reading {mcap_in}')
-    stor_r = rosbag2_py.StorageOptions(uri=str(mcap_in), storage_id='mcap')
-    conv   = rosbag2_py.ConverterOptions('', '')
-    reader = rosbag2_py.SequentialReader()
-    reader.open(stor_r, conv)
+        if out_dir.exists():
+            sys.exit(f'ERROR: output already exists: {out_dir}')
 
-    type_map      = {info.name: info.type for info in reader.get_all_topics_and_types()}
-    kalup_raw     = []              # [(ts_ns, raw_bytes)]
-    brusilica_raw = []              # [(ts_ns, raw_bytes)]
-    passthrough   = {}              # topic -> [(ts_ns, raw_bytes)]  (non-vrpn topics)
+        # ── read all messages ──────────────────────────────────────────────────
+        print(f'Reading {mcap_in}')
+        reader = rosbag2_py.SequentialReader()
+        reader.open(rosbag2_py.StorageOptions(uri=str(mcap_in), storage_id='mcap'), conv)
 
-    while reader.has_next():
-        topic, data, ts = reader.read_next()
-        if topic == KALUP_TOPIC:
-            kalup_raw.append((ts, data))
-        elif topic == BRUSILICA_TOPIC:
-            brusilica_raw.append((ts, data))
-        elif not topic.startswith('/vrpn_mocap'):
-            passthrough.setdefault(topic, []).append((ts, data))
-    reader.close()
+        type_map      = {info.name: info.type for info in reader.get_all_topics_and_types()}
+        kalup_raw     = []
+        brusilica_raw = []
+        passthrough   = {}
 
-    if not kalup_raw:
-        sys.exit(f'ERROR: topic {KALUP_TOPIC} not found in bag')
-    if not brusilica_raw:
-        sys.exit(f'ERROR: topic {BRUSILICA_TOPIC} not found in bag')
+        while reader.has_next():
+            topic, data, ts = reader.read_next()
+            if topic == KALUP_TOPIC:
+                kalup_raw.append((ts, data))
+            elif topic == BRUSILICA_TOPIC:
+                brusilica_raw.append((ts, data))
+            elif not topic.startswith('/vrpn_mocap'):
+                passthrough.setdefault(topic, []).append((ts, data))
+        reader.close()
 
-    print(f'  {KALUP_TOPIC}: {len(kalup_raw)} messages')
-    print(f'  {BRUSILICA_TOPIC}: {len(brusilica_raw)} messages')
-    for t in sorted(passthrough):
-        print(f'  {t}: {len(passthrough[t])} messages (pass-through)')
+        if not kalup_raw:
+            sys.exit(f'ERROR: topic {KALUP_TOPIC} not found in bag')
+        if not brusilica_raw:
+            sys.exit(f'ERROR: topic {BRUSILICA_TOPIC} not found in bag')
 
-    # ── deserialise kalup, build lookup arrays ─────────────────────────────────
-    kalup_ts   = np.empty(len(kalup_raw), dtype=np.int64)
-    kalup_pos  = np.empty((len(kalup_raw), 3), dtype=np.float64)
-    kalup_quat = np.empty((len(kalup_raw), 4), dtype=np.float64)
+        print(f'  {KALUP_TOPIC}: {len(kalup_raw)} messages')
+        print(f'  {BRUSILICA_TOPIC}: {len(brusilica_raw)} messages')
+        for t in sorted(passthrough):
+            print(f'  {t}: {len(passthrough[t])} messages (pass-through)')
 
-    for i, (ts, data) in enumerate(kalup_raw):
-        msg = deserialize_message(data, PoseStamped)
-        p, q = msg.pose.position, msg.pose.orientation
-        kalup_ts[i]   = ts
-        kalup_pos[i]  = [p.x, p.y, p.z]
-        kalup_quat[i] = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
+        # ── deserialise kalup, build lookup arrays ─────────────────────────────
+        kalup_ts   = np.empty(len(kalup_raw), dtype=np.int64)
+        kalup_pos  = np.empty((len(kalup_raw), 3), dtype=np.float64)
+        kalup_quat = np.empty((len(kalup_raw), 4), dtype=np.float64)
 
-    # ── transform brusilica messages ───────────────────────────────────────────
-    print('Transforming ...')
-    output_msgs = []   # [(ts_ns, raw_bytes)]
+        for i, (ts, data) in enumerate(kalup_raw):
+            msg = deserialize_message(data, PoseStamped)
+            p, q = msg.pose.position, msg.pose.orientation
+            kalup_ts[i]   = ts
+            kalup_pos[i]  = [p.x, p.y, p.z]
+            kalup_quat[i] = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
 
-    for ts, data in brusilica_raw:
-        msg = deserialize_message(data, PoseStamped)
-        p, q = msg.pose.position, msg.pose.orientation
-        p_b = np.array([p.x, p.y, p.z])
-        q_b = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
+        # ── transform brusilica messages ───────────────────────────────────────
+        print('Transforming ...')
+        output_msgs = []
 
-        idx   = nearest_idx(kalup_ts, ts)
-        p_cap = cap_center_world(kalup_pos[idx], kalup_quat[idx])
-        pos, rot = to_kalup_frame(p_b, q_b, p_cap, kalup_quat[idx])
+        for ts, data in brusilica_raw:
+            msg = deserialize_message(data, PoseStamped)
+            p, q = msg.pose.position, msg.pose.orientation
+            p_b = np.array([p.x, p.y, p.z])
+            q_b = (Rotation.from_quat([q.x, q.y, q.z, q.w]) * ROT_X_NEG90).as_quat()
 
-        out = copy.deepcopy(msg)
-        out.header.frame_id    = 'kalup'
-        out.pose.position.x    = float(pos[0])
-        out.pose.position.y    = float(pos[1])
-        out.pose.position.z    = float(pos[2])
-        out.pose.orientation.x = float(rot[0])
-        out.pose.orientation.y = float(rot[1])
-        out.pose.orientation.z = float(rot[2])
-        out.pose.orientation.w = float(rot[3])
+            idx   = nearest_idx(kalup_ts, ts)
+            p_cap = cap_center_world(kalup_pos[idx], kalup_quat[idx])
+            pos, rot = to_kalup_frame(p_b, q_b, p_cap, kalup_quat[idx])
 
-        output_msgs.append((ts, serialize_message(out)))
+            out = copy.deepcopy(msg)
+            out.header.frame_id    = 'kalup'
+            out.pose.position.x    = float(pos[0])
+            out.pose.position.y    = float(pos[1])
+            out.pose.position.z    = float(pos[2])
+            out.pose.orientation.x = float(rot[0])
+            out.pose.orientation.y = float(rot[1])
+            out.pose.orientation.z = float(rot[2])
+            out.pose.orientation.w = float(rot[3])
 
-    # ── merge transformed + passthrough, sorted by timestamp ──────────────────
-    all_msgs = [(ts, OUT_TOPIC, data) for ts, data in output_msgs]
-    for topic, msgs in passthrough.items():
-        for ts, data in msgs:
-            all_msgs.append((ts, topic, data))
-    all_msgs.sort(key=lambda x: x[0])
+            output_msgs.append((ts, serialize_message(out)))
 
-    total = len(all_msgs)
-    print(f'Writing {out_dir} ({total} messages) ...')
-    stor_w = rosbag2_py.StorageOptions(uri=str(out_dir), storage_id='mcap')
-    writer = rosbag2_py.SequentialWriter()
-    writer.open(stor_w, conv)
+        # ── merge transformed + passthrough, sorted by timestamp ──────────────
+        all_msgs = [(ts, OUT_TOPIC, data) for ts, data in output_msgs]
+        for topic, msgs in passthrough.items():
+            for ts, data in msgs:
+                all_msgs.append((ts, topic, data))
+        all_msgs.sort(key=lambda x: x[0])
 
-    writer.create_topic(rosbag2_py.TopicMetadata(
-        id=0, name=OUT_TOPIC, type=MSG_TYPE, serialization_format='cdr'
-    ))
-    for idx, topic in enumerate(sorted(passthrough), start=1):
+        print(f'Writing {out_dir} ({len(all_msgs)} messages) ...')
+        writer = rosbag2_py.SequentialWriter()
+        writer.open(rosbag2_py.StorageOptions(uri=str(out_dir), storage_id='mcap'), conv)
+
         writer.create_topic(rosbag2_py.TopicMetadata(
-            id=idx, name=topic, type=type_map[topic], serialization_format='cdr'
+            id=0, name=OUT_TOPIC, type=MSG_TYPE, serialization_format='cdr'
         ))
+        for idx, topic in enumerate(sorted(passthrough), start=1):
+            writer.create_topic(rosbag2_py.TopicMetadata(
+                id=idx, name=topic, type=type_map[topic], serialization_format='cdr'
+            ))
 
-    for ts, topic, data in all_msgs:
-        writer.write(topic, data, ts)
+        for ts, topic, data in all_msgs:
+            writer.write(topic, data, ts)
 
-    writer.close()
-    print('Done.')
+        writer.close()
+        print(f'Done. Written to {out_dir}')
 
 
 if __name__ == '__main__':

@@ -11,8 +11,8 @@ Output: <out_dir>/<episode>_z_force.csv
 
 Usage
 -----
-  python extract_contact_forces.py <bag_dir_or_mcap>
-  python extract_contact_forces.py <bag_dir_or_mcap> -o /contact_forces
+  python extract_contact_forces.py --bags-dir line_bags
+  python extract_contact_forces.py --bags-dir line_bags -o /contact_forces
 """
 
 import argparse
@@ -29,15 +29,19 @@ from std_msgs.msg import String
 METADATA_TOPIC = "/metadata"
 FORCE_TOPIC = "/optoforce_0"
 
+MCAP_GLOB = (
+    "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_kalup_frame_0.mcap" # with all forces
+    # "episode_*/episode_*_30hz/episode_*_kalup_frame/episode_*_0_30hz_0_kalup_frame_0_fz_only/episode_*_0_30hz_0_kalup_frame_0_fz_only_0.mcap"
+)
 
-def find_mcap(path: Path) -> Path:
-    if path.is_file() and path.suffix == ".mcap":
-        return path
-    if path.is_dir():
-        mcaps = sorted(path.glob("*.mcap"))
-        if mcaps:
-            return mcaps[0]
-    raise FileNotFoundError(f"No .mcap file found at: {path}")
+def _discover_mcaps(bags_dir: Path) -> list[Path]:
+    mcaps = sorted(
+        bags_dir.glob(MCAP_GLOB),
+        key=lambda p: int(p.parts[len(bags_dir.parts)].split("_")[1]),
+    )
+    print("[" + ",\n".join(f'  "{p}"' for p in mcaps) + "\n]")
+    print(f"Found {len(mcaps)} episodes under {bags_dir}")
+    return mcaps
 
 
 def ns_to_iso(ts_ns: int) -> str:
@@ -62,9 +66,9 @@ def process_bag(mcap_in: Path, out_dir: Path) -> None:
     if FORCE_TOPIC not in type_map:
         print(f"WARNING: {FORCE_TOPIC} not found in {mcap_in.parent.name}, skipping.")
         return
-    if METADATA_TOPIC not in type_map:
-        print(f"WARNING: {METADATA_TOPIC} not found in {mcap_in.parent.name}, skipping.")
-        return
+    # if METADATA_TOPIC not in type_map:
+    #     print(f"WARNING: {METADATA_TOPIC} not found in {mcap_in.parent.name}, skipping.")
+    #     return
 
     msgs = []
     while reader.has_next():
@@ -84,9 +88,9 @@ def process_bag(mcap_in: Path, out_dir: Path) -> None:
         writer = csv.writer(f)
         writer.writerow(["index", "timestamp", "z_force"])
         for topic, data, ts_ns in msgs:
-            if topic == METADATA_TOPIC:
-                current_state = deserialize_message(data, String).data
-            elif topic == FORCE_TOPIC and current_state == "contact":
+            # if topic == METADATA_TOPIC:
+            #     current_state = deserialize_message(data, String).data
+            if topic == FORCE_TOPIC:
                 z = deserialize_message(data, WrenchStamped).wrench.force.z
                 writer.writerow([index, ns_to_iso(ts_ns), z])
                 index += 1
@@ -96,9 +100,10 @@ def process_bag(mcap_in: Path, out_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract Z-force during 'contact' state from an MCAP bag."
+        description="Extract Z-force during 'contact' state from MCAP bags."
     )
-    parser.add_argument("input", type=Path, help="Bag directory or .mcap file.")
+    parser.add_argument("--bags-dir", type=Path, required=True,
+                        help="Root bags directory (contains episode_N subdirs).")
     parser.add_argument(
         "-o", "--output",
         type=Path,
@@ -107,8 +112,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    mcap_in = find_mcap(args.input.resolve())
-    process_bag(mcap_in, args.output.resolve())
+    mcaps = _discover_mcaps(args.bags_dir.resolve())
+    if not mcaps:
+        raise SystemExit(f"No mcap files found under {args.bags_dir}\nPattern: {MCAP_GLOB}")
+
+    out_dir = args.output.resolve()
+    for mcap_in in mcaps:
+        process_bag(mcap_in, out_dir)
 
 
 if __name__ == "__main__":
