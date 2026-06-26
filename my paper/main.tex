@@ -37,7 +37,7 @@ Najjednostavniji oblik imitacijskog učenja je \textbf{bihevioralno kloniranje} 
 
 Istraživači koji su napisali \textbf{ALOHA} rad \cite{zhao2023aloha} adresiraju ovaj problem algoritmom \textbf{Action Chunking with Transformers (ACT)}. Ključna inovacija je \textbf{grupiranje akcija} (engl. action chunking) inspirirana istoimenim konceptom iz neuroznanosti koji opisuje kako mozak grupira sekvence akcija u jednu izvršnu jedinicu. Umjesto predviđanja jedne akcije po koraku politika predviđa sekvencu od $k$ budućih akcija odjednom. Modelirajući $\pi_\theta(a_{t:t+k} \mid s_t)$ umjesto $\pi_\theta(a_t \mid s_t)$. Ovo smanjuje efektivni horizont zadatka $k$-puta proporcionalno smanjujući kumulaciju grešaka.
 
-Naivna implementacija grupiranja akcija uzrokuje trzanje robota pri svakom prelasku na novi chunk jer se nova opservacija usvaja naglo svakih $k$ koraka. Autori stoga uvode \textbf{temporalno ansambliranje} (engl. temporal ensembling}) kao mehanizam zaglađivanja. Politika se poziva na svakom vremenskom koraku umjesto svakih $k$ koraka, što rezultira preklapajućim predikcijama za isti vremenski trenutak iz chunkova predviđenih u različitim trenucima. Konačna primijenjena akcija dobiva se vaganim prosjekom svih dostupnih predikcija za taj trenutak:
+Naivna implementacija grupiranja akcija uzrokuje trzanje robota pri svakom prelasku na novi chunk jer se nova opservacija usvaja naglo svakih $k$ koraka. Autori stoga uvode \textbf{temporalno ansambliranje} (engl. temporal ensembling) kao mehanizam zaglađivanja. Politika se poziva na svakom vremenskom koraku umjesto svakih $k$ koraka, što rezultira preklapajućim predikcijama za isti vremenski trenutak iz chunkova predviđenih u različitim trenucima. Konačna primijenjena akcija dobiva se vaganim prosjekom svih dostupnih predikcija za taj trenutak:
 %
 \begin{equation}
     a_t = \frac{\sum_{i} w_i \, \hat{a}_t^{(i)}}{\sum_{i} w_i}, \qquad w_i = \exp(-m \cdot i),
@@ -66,7 +66,7 @@ Dominantni modeli za obradu sekvenci, poput prijevoda teksta, prije transformera
 
 Model se sastoji od enkodera i dekodera, svaki s po 6 identičnih slojeva. Enkoder obrađuje ulazni tekst, a dekoder generira izlaz korak po korak.
 
-Enkoder se sastoji od stoga N = 6 identičnih slojeva. Svaki sloj ima dva podsloja. Prvi je mehanizam višeglave samopažnje, a drugi je jednostavna pozicijski potpuno povezana mreža za propagaciju unaprijed. Oko svakog od dva podsloja primjenjujemo rezidualne veze \cite{he2016deep}, nakon kojih slijedi normalizacija sloja \cite{ba2016layernorm}. Drugim riječima izlaz svakog podsloja je LayerNorm(x + Podsloj(x)), gdje je Podsloj(x) funkcija koju implementira sam podsloj. Kako bi se olakšalo korištenje rezidualnih veza svi podslojevi u modelu kao i slojevi ugradnje proizvode izlaze istih dimenzija.
+Enkoder se sastoji od stoga N = 6 identičnih slojeva. Svaki sloj ima dva podsloja. Prvi je mehanizam višeglave samopažnje, a drugi je jednostavna pozicijski potpuno povezana mreža za propagaciju unaprijed. Oko svakog od dva podsloja primjenjujemo rezidualne veze \cite{he2016resnet}, nakon kojih slijedi normalizacija sloja \cite{ba2016layernorm}. Drugim riječima izlaz svakog podsloja je LayerNorm(x + Podsloj(x)), gdje je Podsloj(x) funkcija koju implementira sam podsloj. Kako bi se olakšalo korištenje rezidualnih veza svi podslojevi u modelu kao i slojevi ugradnje proizvode izlaze istih dimenzija.
 
 Dekoder se također sastoji od stoga N = 6 identičnih slojeva. Uz dva podsloja prisutna u svakom sloju enkodera. Dekoder uvodi i treći podsloj koji provodi višeglavu pažnju nad izlazom enkodera. Kao i u enkoderu oko svakog podsloja primjenjujemo rezidualne veze nakon kojih slijedi normalizacija sloja. Također modificiramo podsloj samopažnje u stogu dekodera kako bismo spriječili da pojedine pozicije "vide" naknadne pozicije u budućnosti. Taj mehanizam se zove maskiranje. Maskiranje osigurava da predikcije za poziciju i mogu ovisiti isključivo o poznatim izlazima na pozicijama manjim od i.
 
@@ -107,16 +107,62 @@ Na zadatku prijevoda engleski na njemački (WMT 2014) postignut je rezultat od 2
 Transformer arhitektura postala je temelj gotovo svim modernim jezičnim modelima BERT \cite{devlin2019bert}, GPT \cite{radford2018gpt} i svim ostalim velikim modelima koji su uslijedili. Ključna spoznaja da rekurencija uopće nije potrebna, već samo mehanizam pažnje, bila je u to vrijeme revolucionarna i trajno je promijenila područje umjetne inteligencije.
 
 \section{VLA - $\pi_0$}
-baza za ForceVLA
 
-\section{Mixture of experts}
+\subsection{Vizijsko-jezično-akcijski modeli}
+ 
+Vizijsko-jezično-akcijski modeli (engl.vision-language-action models, VLA) predstavljaju pristup robotskom učenju u kojem jedan model istovremeno obrađuje vizualne ulaze, jezične naredbe i robotske akcije. Ideja je da se već postojeći vizijsko-jezični model (engl. vision language model, VLM) pred-treniran na velikim podatcima slika i teksta s interneta prilagodi tako da uz tekst može proizvoditi i robotske akcije. Time robotski model nasljeđuje opće znanje o svijetu, semantičko zaključivanje i sposobnost praćenja jezičnih uputa što bi inače bilo gotovo nemoguće naučiti isključivo iz ograničene količine robotskih podataka.
+ 
+VLM koristi transformer model kao glavni dio svoje arhitekture koja mu omogućava treniranje na velikom skupu podataka te sposobnost "pamćenja" mnogih ovisnosti u tim podatcima. Korištenje VLM-a kao baze arhitekture ključno je upravo zbog problema podataka jer za razliku od teksta i slika ne postoji baza podataka robotskih podataka usporedivih razmjera. Pred-trenirani VLM već posjeduje bogatu vizualnu i semantičku reprezentaciju svijeta pa robotskom modelu preostaje naučiti tek vezu između tih reprezentacija i motoričkih naredbi. Tako model lakše generalizira na nove objekte i situacije te može slijediti jezične naredbe izražene prirodnim jezikom.
+ 
+Jedan od prvih i najutjecajnijih VLA modela jest RT-2 (engl. Robotic Transformer 2) tvrtke Google DeepMind \cite{zitkovich2023rt2}. RT-2 prilagođava pred-trenirani VLM na podacima robotskih demonstracija pri čemu akcije kodira kao diskretne tokene na isti način na koji jezični model tokenizira tekst. Time je moguće iskoristiti isti transformerski model i za razumijevanje scene i za generiranje motoričkih naredbi. Model pokazuje niz sposobnosti koje proizlaze iz pred-treniranja na podacima s interneta model generalizira na nove objekte i interpretira naredbe koje nisu bile prisutne u podacima za treniranje. Pokazuje sposobnost rudimentarnog zaključivanja poput odabira predmeta prema veličini ili prepoznavanja kamena kao improviziranog čekića.
+ 
+OpenVLA \cite{kim2024openvla} je inačica VLA modela otvorenog koda s 7 milijardi parametara razvijena na Sveučilištu Stanford. Trenirana na skupu podataka Open X-Embodiment \cite{oneill2024openx} koji obuhvaća više od milijun epizoda prikupljenih na 22 različite robotske platforme. OpenVLA kombinira vizualne enkodere DINOv2 \cite{oquab2024dinov2} i SigLIP \cite{zhai2023sigmoidlosslanguageimage} s jezičnom bazom Llama-2 \cite{touvron2023llama2} te proizvodi diskretne akcijske tokene. Unatoč manjoj veličini u odnosu na RT-2, OpenVLA nadmašuje taj model na nizu manipulacijskih zadataka, a dostupnost otvorenog koda učinila ga je široko korištenim polazištem za istraživanja.
 
-\begin{figure}[h]
+Model $\pi_0$ \cite{black2024pi0} generalistički je VLA model tvrtke Physical Intelligence, osnovane 2023.\ godine od strane istraživača s iskustvom u razvoju robotskih temeljnih modela (engl. foundation models), koji se pred-trenira na raznolikom skupu podataka s više robota i zadataka te se prema potrebi prilagođava konkretnim zadatcima. Glavna arhitekturna značajka je kombinacija VLM-a kao baze s generiranjem kontinuiranih akcija putem usklađivanja toka (engl. flow matching).
+
+Model $\pi_0$ treniran je na jednom od najvećih i najraznolikijih robotskih skupova podataka do tada koji obuhvaća podatke s osam različitih robotskih platformi i pokriva širok spektar manipulacijskih zadataka. Zahvaljujući otvorenom kodu i demonstraciji impresivnih rezultata na zahtjevnim zadacima poput slaganja rublja i sastavljanja kartonskih kutija $\pi_0$ brzo je stekao popularnost u istraživačkoj zajednici te je postao široko korištena arhitekturna osnova za razvoj novih otvorenih modela. Upravo zbog toga $\pi_0$ služi kao temeljna arhitektura ovog diplomskog rada, a detaljniji opis njegove arhitekture i načina rada slijedi u idućem poglavlju.
+
+\subsection{Arhitektura $\pi_0$ modela}
+
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=1\textwidth]{images/mixture of experts architecture.PNG}
-    \caption{MoE arhitektura}
+    \includegraphics[width=1\textwidth]{images/pi zero architecture hr.jpg}
+    \caption{Arhitektura $\pi_0$ modela}
     \label{fig:my_image}
 \end{figure}
+
+Model $\pi_0$ koristi pred-trenirani vizijsko-jezični model kao bazu arhitekture, kao što je vidljivo na slici 2.4, proširenu komponentama specifičnima za robotiku. Enkoderi slika preslikavaju opažene slike u isti prostor ugrađivanja (engl.embedding space) kao i jezične tokene, čime se vizualni i jezični ulazi obrađuju zajednički.
+ 
+Budući da VLM po svojoj prirodi proizvodi samo diskretne jezične tokene, dok spretno upravljanje zahtijeva kontinuirane motoričke naredbe visoke frekvencije, model se proširuje zasebnim skupom težina koji se naziva akcijski stručnjak (engl. action expert). On obrađuje ulaze i izlaze specifične za robotiku proprioceptivno stanje robota i akcije te pomoću usklađivanja toka modelira kontinuiranu distribuciju akcija.
+ 
+Dakle dizajn se sastoji od dva elementa: veći VLM koji čini bazu arhitekture obrađuje slike i tekst, a manji akcijski stručnjak obrađuje stanje i akcije. Dva skupa težina međusobno djeluju isključivo kroz slojeve samopažnje (engl. self-attention) transformera. VLM koji čini bazu arhitekture inicijalizira se iz pred-treniranog modela, dok se akcijski stručnjak uči iz nasumičnog početka.
+ 
+Formalno, cilj je modelirati distribuciju $p(\mathbf{A}_t \mid \mathbf{o}_t)$, gdje je $\mathbf{A}_t = [\mathbf{a}_t, \dots, \mathbf{a}_{t+H-1}]$ niz budućih akcija duljine $H$ (horizont), a opažanje $\mathbf{o}_t = [\mathbf{I}^1_t, \dots, \mathbf{I}^n_t, \ell_t, \mathbf{q}_t]$ sastoji se od više slika $\mathbf{I}^i_t$, jezične naredbe $\ell_t$ i vektor kuteva zglobova $\mathbf{q}_t$.
+ 
+\subsection{Grupiranje akcija}
+ 
+Umjesto predviđanja jedne akcije po koraku $\pi_0$ koristi grupiranje akcija (engl. action chunking) \cite{zhao2023aloha}. U jednom prolazu predviđa cijeli niz od $H$ uzastopnih budućih akcija. Ovaj pristup ima dvije glavne prednosti. Prvo generiranjem cijelog niza odjednom moguće je izvršiti više akcija prije ponovne inferencije modela čime se uz ograničen broj prolaza kroz model postiže visoka efektivna frekvencija upravljanja. Drugo predviđanje koherentnih nizova ublažava nakupljanje pogrešaka i ``podrhtavanje'' karakteristično za modele koji predviđaju jednu po jednu akciju što vodi glađem i stabilnijem ponašanju.
+
+\subsection{Usklađivanje toka}
+ 
+Za modeliranje kontinuirane distribucije akcija $\pi_0$ koristi uvjetno usklađivanje toka (engl. conditional flow matching) \cite{lipman2022flowmatching}, varijantu difuzijskih modela \cite{ho2020ddpm}. Usklađivanje toka modelu omogućuje visoku preciznost i sposobnost modeliranja višemodalnih (engl.multimodal) distribucija, pri čemu jedno opažanje može voditi do više valjanih akcija. Upravo ta svojstva čine ga prikladnim za spretne zadatke visoke frekvencije.
+
+Tijekom treniranja za niz akcija $\mathbf{A}_t$ uzorkuje se slučajan šum $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$ i vremenski korak $\tau \in [0, 1]$, čime se tvore ``šumovite akcije'' $\mathbf{A}^{\tau}_t = \tau \mathbf{A}_t + (1 - \tau)\boldsymbol{\epsilon}$. Mreža se zatim uči da predvidi vektorsko polje koje šum vraća prema stvarnim akcijama minimizirajući gubitak usklađivanja toka:
+
+\begin{equation}
+  \label{eq:flow-loss}
+L^\tau(\theta) = \mathbb{E}_{p(\mathbf{A}_t | \mathbf{o}_t),\, q(\mathbf{A}_t^\tau | \mathbf{A}_t)} 
+\left\| \mathbf{v}_\theta(\mathbf{A}_t^\tau, \mathbf{o}_t) - \mathbf{u}(\mathbf{A}_t^\tau | \mathbf{A}_t) \right\|^2
+\end{equation}
+gdje je $\mathbf{u}(\mathbf{A}^{\tau}_t \mid \mathbf{A}_t) = \mathbf{A}_t - \boldsymbol{\epsilon}$ ciljano vektorsko polje odšumljivanja.
+
+Pri inferenciji akcije se generiraju počevši od čistog šuma $\mathbf{A}^0_t \sim \mathcal{N}(0, \mathbf{I})$ te se naučeno vektorsko polje integrira od $\tau = 0$ do $\tau = 1$ u 10 koraka, postupno pretvarajući šum u koherentan niz akcija. Ovaj generativni postupak omogućuje modeliranje složenih distribucija akcija koje jednostavnije, determinističke metode ne mogu uhvatiti.
+ 
+\subsection{Recept treniranja}
+ 
+Treniranje modela $\pi_0$ podijeljeno je na dvije faze analogno praksi kod velikih jezičnih modela. U fazi pred-treniranja model se izlaže što širem rasponu zadataka i ponašanja prikupljenih s više robota kako bi stekao općenite i široko primjenjive sposobnosti. Ovdje se teži maksimalnoj raznolikosti podataka čak i po cijenu niže kvalitete pojedinih demonstracija. U fazi naknadnog treniranja (engl. post-training) model se prilagođava manjim skupom visokokvalitetnih pomno odabranih podataka za konkretan zadatak.
+ 
+Intuicija iza ove podjele jest da raznoliki (i djelomično nesavršeni) podaci uče model kako se oporaviti od pogrešaka i nositi s neočekivanim situacijama dok ga visokokvalitetni podaci uče da zadatak izvodi vješto i tečno. Treniranje isključivo na kvalitetnim podacima daje krhak model koji se ne zna pouzdano oporaviti od pogrešaka dok pred-trenirani model bez prilagodbe ne pokazuje glatke strategije. Tek kombinacija obiju faza daje željeno ponašanje.
 
 \section{ForceVLA}
 
@@ -127,11 +173,22 @@ baza za ForceVLA
     \label{fig:my_image}
 \end{figure}
 
+\subsection{Mjesavina strucnjaka}
+
+Mjesavina strucnjaka (engl. Mixture of Experts, MoE)
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1\textwidth]{images/mixture of experts architecture.PNG}
+    \caption{MoE arhitektura}
+    \label{fig:my_image}
+\end{figure}
+
 \chapter{Motivacija i zadatak}
 
 U ovom radu razmatran je zadatak brušenja kalupa i ravnih ploha, klasičan primjer kontaktno bogate manipulacije. Alat mora pratiti rub kalupa s preciznošću na razini milimetara dok kontaktna sila mora ostati unutar uskog raspona: premala sila ne brusi, prevelika oštećuje kalup. Predmet brušenja je u ovom radu fiksiran, a akcije su definirane apsolutno u njegovom koordinatnom sustavu, pa model ne generalizira na varijacije njegove poze. Ovo nije tehnički kompromis, već odraz prirode zadatka u usporedivim industrijskim postrojenjima predmet brušenja u pravilu je čvrsto pričvršćen, pa takva generalizacija u praksi nije potrebna. Fokus rada je stoga na sposobnosti modela da nauči fine, kontaktno-osjetljive korekcije trajektorije, koje se ne mogu svesti na jednostavno geometrijsko praćenje putanje niti unaprijed programirati ručno podešenom impedance kontrolom.
 
-Ovakva priroda zadatka izravno motivira izbor arhitekture korištene u ovom radu. Klasično bihevioralno kloniranje pati od problema kumulativnih grešaka, posebno izraženog u zadatcima fine manipulacije. ACT \cite{zhao2023aloha} ovo adresira grupiranjem akcija (action chunking), čime se povećava efektivni horizont predikcije i smanjuje kumulacija grešaka, dok temporalno ansambliranje uvedeno u istom radu rješava trzanje robota pri prelasku između susjednih chunkova. Diffusion Policy \cite{chi2023diffusionpolicy} generiranje akcija formulira kao iterativni proces odšumljivanja, čime prirodno modelira višemodalne distribucije akcija i bolje skalira na visokodimenzionalne sekvence akcija nego klasična regresija. Bez ovih mehanizama isprobanih u sklopu ovog rada gibanje robota u stvarnom svijetu bilo je u praksi neupotrebljivo što potvrđuje nalaze oba spomenuta rada.
+Ovakva priroda zadatka izravno motivira izbor arhitekture korištene u ovom radu. Klasično bihevioralno kloniranje pati od problema kumulativnih grešaka, posebno izraženog u zadatcima fine manipulacije. ACT (engl. action chunking transformer) \cite{zhao2023aloha} ovo adresira grupiranjem akcija (action chunking), čime se povećava efektivni horizont predikcije i smanjuje kumulacija grešaka, dok temporalno ansambliranje uvedeno u istom radu rješava trzanje robota pri prelasku između susjednih chunkova. Diffusion Policy \cite{chi2023diffusionpolicy} generiranje akcija formulira kao iterativni proces odšumljivanja, čime prirodno modelira višemodalne distribucije akcija i bolje skalira na visokodimenzionalne sekvence akcija nego klasična regresija. Bez ovih mehanizama isprobanih u sklopu ovog rada gibanje robota u stvarnom svijetu bilo je u praksi neupotrebljivo što potvrđuje nalaze oba spomenuta rada.
 
 ACT i Diffusion Policy izravni su arhitekturni prethodnici modela $\pi_0$ \cite{black2024pi0} koji oba principa integrira u predtreniranu vizualno-jezično-akcijsku (VLA) arhitekturu. $\pi_0$ pak služi kao osnova modela ForceVLA koji ovaj temelj proširuje mehanizmom mješavine eksperata (engl. Mixture of Experts, MoE) i mjerenjima sile kao dodatnim ulaznim modalitetom. Upravo je ta proširenost taktilnom percepcijom razlog zbog kojeg je ForceVLA odabran kao temeljna arhitektura ovog rada: uspješnost kontakta u brušenju (je li alat prislonjen na kalup prejako, preslabo ili uopće nije u kontaktu) često se ne može pouzdano razaznati iz slike, dok je iz mjerenja sile ta informacija izravno dostupna.
 
@@ -170,7 +227,7 @@ U ovom poglavlju će biti spomenuti praktični dio rada tj. fizički postav koji
     \begin{minipage}{0.48\textwidth}
         \centering
         \includegraphics[width=\textwidth]{images/kalup side view.jpg}
-        \caption{}
+        \caption{Kalup montiran na metalni postav}
         \label{fig:slika2}
     \end{minipage}
 \end{figure}
@@ -202,7 +259,7 @@ Treba napomenuti da se OptiTrack koristi isključivo u fazi prikupljanja podatak
 \section{Robotska ruka}
 Za evaluaciju naučenog modela potrebno je fizičko upravljanje pozom brusilice, odnosno izvođenje akcija koje model predviđa na temelju vizualnih, jezičnih i taktilnih opservacija. U tu svrhu korištena je robotska ruka Franka Emika Panda, opremljena prikladnim 3D printanim nosačem za brusilicu montiranim na njeni krajnji efektor umjesto standardnog grippera. Robotska ruka u ovom kontekstu preuzima ulogu koju je tijekom prikupljanja podataka imao ljudski demonstrator. Na temelju izlaza modela koji predviđa sljedeću pozu vrha alata u koordinatnom sustavu kalupa robot izvodi odgovarajuće gibanje u fizičkom prostoru.
  
-Za upravljanje samim robotom korišten je \textbf{Cartesian Impedance Controller} iz paketa \texttt{serl\_franka\_controllers}. Ovaj kontroler izvorno je razvijen u okviru SERL-a (Sample-Efficient Robotic Reinforcement Learning), softverskog paketa namijenjenog učenju robotskih politika učenjem potkrepljivanjem izravno na fizičkom robotu, gdje je sigurnost i stabilnost interakcije s okolinom ključan zahtjev. Riječ je o ROS paketu koji upravlja robotom Franka Emika kroz biblioteke libfranka i franka\_ros, a koji pruža kompatibilan, ali precizan kartezijski impedance kontroler namijenjen sigurnom učenju potkrepljivanjem u stvarnom vremenu. Ključna karakteristika ovog kontrolera, relevantna upravo za zadatak fine, kontaktne manipulacije razmatran u ovom radu, jest način na koji istovremeno postiže preciznost i popustljivost: referentna točka impedance kontrolera ograničena je na određenu udaljenost od trenutne poze robota unutar petlje upravljanja u stvarnom vremenu, što omogućuje korištenje visokog pojačanja radi preciznosti bez nastanka prekomjerne sile prilikom kontakta. Ovakvo ponašanje izravno odgovara prirodi zadatka brušenja: robot mora precizno pratiti naučenu trajektoriju, ali istovremeno popustljivo reagirati na neočekivani ili prejak kontakt s kalupom tj. plohom koju brusi, čime se smanjuje rizik oštećenja alata, kalupa ili samog senzora sile tijekom evaluacije naučenog modela.
+Za upravljanje samim robotom korišten je \textbf{Cartesian Impedance Controller} iz paketa \texttt{serl\_franka\_controllers}. Ovaj kontroler izvorno je razvijen u okviru SERL-a (Sample-Efficient Robotic Reinforcement Learning), \cite{luo2025serlsoftwaresuitesampleefficient} softverskog paketa namijenjenog učenju robotskih politika učenjem potkrepljivanjem izravno na fizičkom robotu, gdje je sigurnost i stabilnost interakcije s okolinom ključan zahtjev. Riječ je o ROS paketu koji upravlja robotom Franka Emika kroz biblioteke libfranka i franka\_ros, a koji pruža kompatibilan, ali precizan kartezijski impedance kontroler namijenjen sigurnom učenju potkrepljivanjem u stvarnom vremenu. Ključna karakteristika ovog kontrolera, relevantna upravo za zadatak fine, kontaktne manipulacije razmatran u ovom radu, jest način na koji istovremeno postiže preciznost i popustljivost: referentna točka impedance kontrolera ograničena je na određenu udaljenost od trenutne poze robota unutar petlje upravljanja u stvarnom vremenu, što omogućuje korištenje visokog pojačanja radi preciznosti bez nastanka prekomjerne sile prilikom kontakta. Ovakvo ponašanje izravno odgovara prirodi zadatka brušenja: robot mora precizno pratiti naučenu trajektoriju, ali istovremeno popustljivo reagirati na neočekivani ili prejak kontakt s kalupom tj. plohom koju brusi, čime se smanjuje rizik oštećenja alata, kalupa ili samog senzora sile tijekom evaluacije naučenog modela.
 
 \chapter{Demonstracija}
 
@@ -271,20 +328,38 @@ Obrađeni podatci u sebi sadržavaju informacije o 6D pozi vrha alata u koordina
 
 Na grafu 5.2 i u tablici 5.1 su uključena mjerenja sile samo za Z komponentu sile koja je najbitnija jer je ona približno jednaka sili normale na plohu kalupa koju alat brusilice proizvodi tijekom kontakta sa kalupom. Bitno je naglasiti da u mjerenjima u tablici 5.1 su uključene sile samo tijekom kontakta alata brusilice i kalupa. Dakle sila dok je brusilica u zraku se ne uračunava u tablici jer nam ona prestavlja samo buku. Većinu vremena snimljenih podataka brusilica je u kontaktu sa kalupom, a to čini 84\% vremena skupa podataka. Dakle u tablici je izostavljeno samo 16\% nerelevantnih uzoraka sile.
 
-\input{graphs/contact_forces_graph}
+\input{graphs/kalup_contact_forces_graph}
 
-\input{graphs/contact_forces_table}
+\input{graphs/kalup_contact_forces_table}
+
+\input{graphs/line_contact_forces_graph}
+
+\input{graphs/line_contact_forces_table}
 
 
 Promatrajući graf 5.1 možemo primjetiti da se sile kreću u rasponu od -1.5 do 6 N. Negativne sile su neželjene budući da su one uzrokovane šumom senzora sile te bi fizikalno značile da netko podiže kalup umjesto da vrši silu na kalup što jednostavno nije slučaj. Isto tako se primjećuje povečanje sile od epizode broj 20 pa nadalje zbog korištenja metalne četke kao alata koja je pružala značajno veći otpor i sukladno tome proizvodila veću silu. Prijašnja četka koja se koristila je bila od plastičnih vlakana koja se brzo istrošila tijekom skupljanja podataka te je zato bila potrebna zamjena za metalnu. Sve to se spominje kako bi se ukazalo na neujednačenost i nesavršenstvo podataka zbog ograničenja pravog svijeta.
 
 \renewcommand{\figurename}{Graf}
+
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.85\textwidth]{images/tool_poses_pointcloud.png}
-    \caption{Raspodjela poza TCP-a u koordinatnom sustavu kalupa. 
-    Boja odgovara gustoći točaka}
-    \label{fig:tool_poses_pointcloud}
+    
+    \begin{minipage}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/kalup_tool_poses_pointcloud.png}
+        \caption{Raspodjela poza TCP-a u koordinatnom sustavu kalupa. 
+        Boja odgovara gustoći točaka}
+        \label{fig:kalup_tool_poses_pointcloud}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/line_tool_poses_pointcloud.png}
+        \caption{Raspodjela poza TCP-a u koordinatnom sustavu plohe. 
+        Boja odgovara gustoći točaka}
+        \label{fig:line_tool_poses_pointcloud}
+    \end{minipage}
+
 \end{figure}
 
 Na grafu 5.2 možemo viditi prikaz poza koje se nalaze u skupu podataka te također njihovu prostornu gustoću. Većina poza se nalazi pri vrhu kalup jer se tijekom demonstracija na tim dijelovima prolazilo vrlo polako jer označava početak i kraj trajektorije i samog kalupa.
@@ -298,7 +373,7 @@ Na grafu 5.2 možemo viditi prikaz poza koje se nalaze u skupu podataka te tako�
 - absolute EE pose
 
 \section{Metrike ucenja}
-\input{graphs/loss_graphs}
+\input{graphs/kalup_loss_graphs}
 Na grafovima 6.1. su prikazane krivulje greške treniranja djelomično budući je u prvom koraku greška bila 5 koja je eksponencijalno padala u početku te kasnije primjećujemo značajno blaži pad. Prikazani su podatci samo do koraka 30000 iako su trenirani na više koraka. Model sa svim silama je treniran do 50000. i model sa samo Z silom do 100000. koraka. Nakon 30000. koraka oba modela dosegnu grešku oko 0.005 i dalje osciliraju oko te točke tj. možemo reći da su modeli tada konvergirali.
 
 \chapter{Evaluacija}
@@ -340,16 +415,16 @@ Future work:
 \bibliographystyle{unsrt}
 
 \begin{sazetak}
-Sažetak na hrvatskom jeziku.
+Vizijsko-jezično-akcijski (VLA) modeli unaprijedili su generalističku robotsku manipulaciju iskorištavanjem pred-treniranih vizualnih i jezičnih reprezentacija, no većina postojećih radova fokusira se na zadatke hvatanja i premještanja predmeta uz korištenje grippera. U ovom radu VLA paradigma primjenjuje se na zadatak kontinuirane kontrole alata bez grippera, konkretno brušenje, gdje je alat rigidno montiran na krajnji efektor robota. Kao doprinos rada prikupljen je vlastiti skup podataka temeljen na slobodnim ljudskim demonstracijama snimljenim sustavom OptiTrack, uz sinkronizirana mjerenja kontaktne sile i vizualne podatke s dvije kamere. Model se temelji na ForceVLA arhitekturi koja mjerenje sile uvodi kao ravnopravni ulazni modalitet. Evaluacija istražuje koliko taktilna povratna informacija doprinosi kvaliteti naučenog ponašanja u zadatku bogatom kontaktom.
 
-\kljucnerijeci{VLA, imitacijsko ucenje, sila, multi modalnost, manipulacija}
+\kljucnerijeci{VLA, imitacijsko učenje, sila, multimodalnost, manipulacija, brušenje}
 \end{sazetak}
 
 \engtitle{Multimodal learning of manipulation actions from visual, linguistic and force data}
 \begin{abstract}
-Abstract.
+Vision-Language-Action (VLA) models have advanced general-purpose robotic manipulation by leveraging pretrained visual and linguistic representations, yet most existing work focuses on grasping or pick and place tasks using a gripper. This work applies the VLA paradigm to continuous tool control without a gripper, specifically grinding, where the tool is rigidly mounted on the robot's end effector. As the primary contribution a novel dataset was collected based on free human demonstrations captured with an OptiTrack motion tracking system with synchronized contact force measurements and visual data from two cameras. The model builds on the ForceVLA architecture which treats force sensing as a first-class input modality alongside vision and language. Evaluation investigates the extent to which tactile feedback improves learned behavior quality in a contact-rich manipulation task.
 
-\keywords{VLA, force, manipulation}
+\keywords{VLA, imitation learning, force, multimodality, manipulation, grinding}
 \end{abstract}
 
 \end{document}
